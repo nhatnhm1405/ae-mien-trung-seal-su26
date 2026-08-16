@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
+import { METRIC_COLOR, Sparkline, TrendChart, type SeriesPoint } from './components/charts'
 
 type Status = 'ok' | 'warn' | 'danger' | 'offline'
 
@@ -201,7 +202,7 @@ const devices: {
   name: string
   status: Status
   age: string
-  metrics: { label: string; value: string }[]
+  metrics: { label: string; value: string; history?: number[] }[]
 }[] = [
   {
     id: 'SOIL_01',
@@ -209,7 +210,7 @@ const devices: {
     status: 'ok',
     age: '12 giây',
     metrics: [
-      { label: 'Độ ẩm đất', value: '68%' },
+      { label: 'Độ ẩm đất', value: '68%', history: [72, 71, 70, 70, 69, 69, 68, 68] },
       { label: 'Nhiệt độ', value: '27°C' },
     ],
   },
@@ -219,7 +220,7 @@ const devices: {
     status: 'ok',
     age: '30 giây',
     metrics: [
-      { label: 'Nhiệt độ', value: '24°C' },
+      { label: 'Nhiệt độ', value: '24°C', history: [22, 23, 23, 24, 25, 24, 23, 24] },
       { label: 'Độ ẩm', value: '82%' },
     ],
   },
@@ -229,7 +230,7 @@ const devices: {
     status: 'ok',
     age: '45 giây',
     metrics: [
-      { label: 'Lưu lượng', value: '18 L/min' },
+      { label: 'Lưu lượng', value: '18 L/min', history: [15, 16, 17, 19, 20, 18, 17, 18] },
       { label: 'Công suất', value: '340 W' },
     ],
   },
@@ -238,14 +239,14 @@ const devices: {
     name: 'Cảm biến pH bồn',
     status: 'warn',
     age: '1 phút',
-    metrics: [{ label: 'Độ pH', value: '6.4' }],
+    metrics: [{ label: 'Độ pH', value: '6.4', history: [6.1, 6.2, 6.3, 6.5, 6.6, 6.5, 6.4, 6.4] }],
   },
   {
     id: 'TANK_01',
     name: 'Bồn nước chính',
     status: 'ok',
     age: '18 giây',
-    metrics: [{ label: 'Mực nước', value: '72%' }],
+    metrics: [{ label: 'Mực nước', value: '72%', history: [76, 75, 74, 73, 73, 72, 72, 72] }],
   },
   {
     id: 'SUN_01',
@@ -254,6 +255,41 @@ const devices: {
     age: '8 phút',
     metrics: [{ label: 'Cường độ sáng', value: '—' }],
   },
+]
+
+// 3 tiếng gần nhất, mỗi điểm cách nhau 15 phút — dùng cho 2 chart xu hướng chính.
+// Độ ẩm đất & mực nước bồn đều đang giảm dần dù số hiện tại chưa ở mức báo động,
+// đúng tinh thần "sliding window bắt xu hướng" của đề bài.
+const soilMoistureTrend: SeriesPoint[] = [
+  { label: '−3 giờ', value: 76 },
+  { label: '−2g45', value: 75 },
+  { label: '−2g30', value: 75 },
+  { label: '−2g15', value: 74 },
+  { label: '−2 giờ', value: 74 },
+  { label: '−1g45', value: 73 },
+  { label: '−1g30', value: 72 },
+  { label: '−1g15', value: 71 },
+  { label: '−1 giờ', value: 71 },
+  { label: '−45p', value: 70 },
+  { label: '−30p', value: 69 },
+  { label: '−15p', value: 69 },
+  { label: 'Hiện tại', value: 68 },
+]
+
+const tankLevelTrend: SeriesPoint[] = [
+  { label: '−3 giờ', value: 81 },
+  { label: '−2g45', value: 80 },
+  { label: '−2g30', value: 80 },
+  { label: '−2g15', value: 79 },
+  { label: '−2 giờ', value: 78 },
+  { label: '−1g45', value: 77 },
+  { label: '−1g30', value: 76 },
+  { label: '−1g15', value: 76 },
+  { label: '−1 giờ', value: 75 },
+  { label: '−45p', value: 74 },
+  { label: '−30p', value: 73 },
+  { label: '−15p', value: 73 },
+  { label: 'Hiện tại', value: 72 },
 ]
 
 const onlineDeviceCount = devices.filter((d) => d.status !== 'offline').length
@@ -340,9 +376,10 @@ export default function App() {
       {/* TOP BAR */}
       <header className="sticky top-0 z-30 border-b border-[var(--color-line)] bg-[var(--color-canvas)]/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
-          <div className="mr-auto flex items-baseline gap-2">
+          <div className="mr-auto flex items-center gap-2">
+            <img src="/logo-sprout.png" alt="" className="h-7 w-7 object-contain" />
             <span className="font-display text-xl font-extrabold tracking-tight text-[var(--color-leaf-deep)]">
-              AgriMind
+              AeMT
             </span>
             <span className="hidden text-xs font-medium text-[var(--color-ink-soft)] sm:inline">
               Multi-Agent Farm
@@ -380,7 +417,7 @@ export default function App() {
               return (
                 <div
                   key={d.id}
-                  className={`rounded-xl border-2 border-[var(--color-line)] p-4 ${
+                  className={`flex h-full flex-col rounded-xl border-2 border-[var(--color-line)] p-4 ${
                     off ? 'bg-[#e4e4e1] text-[var(--color-offline)]' : ''
                   }`}
                 >
@@ -398,11 +435,11 @@ export default function App() {
                     {d.name}
                   </div>
 
-                  <div className="mt-3 space-y-1.5">
+                  <div className="mt-3 grid grid-cols-[1fr_auto] items-baseline gap-x-2 gap-y-1.5">
                     {d.metrics.map((m, i) => {
                       const MetricIcon = METRIC_ICON[m.label]
                       return (
-                        <div key={m.label} className="flex items-baseline justify-between gap-2">
+                        <Fragment key={m.label}>
                           <span className="flex items-center gap-1 text-[11px] font-medium text-[var(--color-ink-soft)]">
                             {MetricIcon && <MetricIcon className="h-3 w-3" />}
                             {m.label}
@@ -410,27 +447,54 @@ export default function App() {
                           <span
                             className={
                               i === 0
-                                ? `font-display text-2xl font-bold leading-none tracking-tight ${
+                                ? `font-display text-2xl font-bold leading-none tracking-tight text-right ${
                                     off ? 'text-[var(--color-offline)]' : 'text-[var(--color-ink)]'
                                   }`
-                                : `text-sm font-semibold ${
+                                : `text-right text-sm font-semibold ${
                                     off ? 'text-[var(--color-offline)]' : 'text-[var(--color-ink)]'
                                   }`
                             }
                           >
                             {off ? '—' : m.value}
                           </span>
-                        </div>
+                        </Fragment>
                       )
                     })}
                   </div>
 
-                  <div className="mt-3 text-xs font-medium text-[var(--color-ink-soft)]">
-                    {off ? 'Mất kết nối' : d.age}
+                  {/* Ghim sparkline + độ mới dữ liệu xuống đáy card để thẳng hàng giữa các ô dù số dòng metric khác nhau */}
+                  <div className="mt-auto pt-3">
+                    {!off && d.metrics[0].history && (
+                      <Sparkline data={d.metrics[0].history} color={METRIC_COLOR[d.metrics[0].label]} />
+                    )}
+                    <div className="mt-3 text-xs font-medium text-[var(--color-ink-soft)]">
+                      {off ? 'Mất kết nối' : d.age}
+                    </div>
                   </div>
                 </div>
               )
             })}
+          </div>
+        </section>
+
+        {/* XU HƯỚNG DỮ LIỆU — sliding window 3 tiếng, bắt xu hướng dù số hiện tại chưa báo động */}
+        <section className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-canvas)] p-5 shadow-sm sm:p-6">
+          <h3 className="mb-3 font-display text-lg font-bold tracking-tight">Xu hướng dữ liệu</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <TrendChart
+              title="Độ ẩm đất — Khu A"
+              deviceId="SOIL_01"
+              unit="%"
+              color={METRIC_COLOR['Độ ẩm đất']}
+              series={soilMoistureTrend}
+            />
+            <TrendChart
+              title="Mực nước bồn chính"
+              deviceId="TANK_01"
+              unit="%"
+              color={METRIC_COLOR['Mực nước']}
+              series={tankLevelTrend}
+            />
           </div>
         </section>
 
