@@ -7,6 +7,7 @@ Ho tro:
   - Farm snapshot (tong hop tat ca devices cho agents)
   - Thread-safe operations (goi tu MQTT callback thread)
 """
+import os
 import time
 import logging
 from collections import deque
@@ -15,7 +16,7 @@ from threading import Lock
 logger = logging.getLogger("Buffer")
 
 BUFFER_MAX_LEN = 500  # toi da 500 diem / device
-STALE_THRESHOLD_SECONDS = 120  # Du lieu >120s khong cap nhat = stale
+STALE_THRESHOLD_SECONDS = int(os.getenv("STALE_THRESHOLD_SECONDS", 15))  # Du lieu >15s khong cap nhat = stale
 
 
 class DeviceBuffer:
@@ -149,8 +150,10 @@ class DeviceBuffer:
         from mqtt_client import DEVICE_REGISTRY
 
         now = time.time()
+        latest_scenario = "NORMAL"
         snapshot = {
             "timestamp": now,
+            "scenario": latest_scenario,
             "devices": {},
             "stale_devices": [],
             "active_devices": [],
@@ -160,9 +163,13 @@ class DeviceBuffer:
             status = self.get_device_status(device_code, now=now)
             latest = self.get_latest(device_code)
 
+            if latest and latest.get("scenario"):
+                latest_scenario = latest.get("scenario")
+
             device_info = {
                 "status": status,
                 "metrics": latest.get("metrics", {}) if latest else {},
+                "scenario": latest.get("scenario", "NORMAL") if latest else "NORMAL",
                 "last_timestamp": latest.get("timestamp", 0) if latest else 0,
             }
             snapshot["devices"][device_code] = device_info
@@ -172,6 +179,7 @@ class DeviceBuffer:
             else:
                 snapshot["active_devices"].append(device_code)
 
+        snapshot["scenario"] = latest_scenario
         return snapshot
 
     def get_device_summary_for_llm(self, device_code: str, n: int = 10) -> dict:
