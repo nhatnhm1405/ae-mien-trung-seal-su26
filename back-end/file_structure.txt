@@ -1,0 +1,37 @@
+project-root/
+├── backend/
+│   ├── main.py                 ← FastAPI app, khởi động WebSocket, entrypoint chạy backend
+│   ├── mqtt_client.py          ← Data/Backend: subscribe MQTT, nhận data thô
+│   ├── buffer.py               ← Data/Backend: deque + pandas.rolling(), tính mean/std/slope
+│   ├── ml/
+│   │   ├── train_model.py      ← AI/ML: script chạy 1 lần, train xong lưu file .pkl
+│   │   ├── detector.py         ← AI/ML: load model, hàm predict(data) -> anomaly_score
+│   │   └── model_checkpoint.pkl ← file model đã train (KHÔNG commit lúc đang thi thật, chỉ để local)
+│   ├── agents/
+│   │   ├── llm_client.py       ← LLM+Pitch: hàm call_agent() dùng chung, gọi DeepSeek API
+│   │   ├── diagnosis_agent.py  ← LLM+Pitch: prompt + logic agent 1
+│   │   ├── action_agent.py     ← LLM+Pitch: prompt + logic agent 2 (function calling)
+│   │   ├── rootcause_agent.py  ← LLM+Pitch: prompt + logic agent 3
+│   │   └── guardrail.py        ← LLM+Pitch: hàm if-else cứng, check trước khi thực thi
+│   ├── websocket.py            ← Data/Backend: đẩy data + alert ra frontend
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx              ← Frontend: layout chính
+│   │   ├── components/
+│   │   │   ├── Chart.jsx        ← Frontend: biểu đồ realtime
+│   │   │   ├── AlertList.jsx    ← Frontend: danh sách cảnh báo + giải thích AI
+│   │   │   └── InjectButton.jsx ← Frontend: nút bơm anomaly giả để demo
+│   │   ├── mock/
+│   │   │   └── sampleData.js    ← Frontend: data giả dùng lúc backend chưa xong
+│   │   └── websocket.js         ← Frontend: kết nối WebSocket tới backend
+│   └── package.json
+│
+├── docs/
+│   ├── SOP.md                   ← LLM+Pitch: file SOP dạng markdown, nhét vào prompt agent
+│   └── causal_map.py            ← LLM+Pitch: dict quan hệ nhân quả cho root-cause agent
+│
+├── .env.example                 ← chứa placeholder API key (KHÔNG commit key thật)
+├── .gitignore                   ← ignore .env, model_checkpoint.pkl (nếu file quá nặng), node_modules
+└── README.md
