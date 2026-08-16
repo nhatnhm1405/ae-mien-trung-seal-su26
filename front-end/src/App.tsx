@@ -579,7 +579,9 @@ export default function App() {
         <section className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-canvas)] p-5 shadow-sm sm:p-6">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h3 className="font-display text-lg font-bold tracking-tight">Chẩn đoán của AI</h3>
-            {data.insight && <AgentBadge agent="Farm Coordinator" label="Farm Coordinator Agent" />}
+            {data.insights.length > 0 && (
+              <AgentBadge agent="Farm Coordinator" label="Farm Coordinator Agent" />
+            )}
           </div>
 
           {data.veto && Date.now() - data.veto.at < 120_000 && (
@@ -594,7 +596,7 @@ export default function App() {
             </div>
           )}
 
-          <AiPanel insight={data.insight} />
+          <AiPanel insights={data.insights} />
         </section>
 
         {/* VẬN HÀNH HÔM NAY — kế hoạch + nhiệm vụ + xác minh gộp 1 khối, chia bằng đường kẻ */}

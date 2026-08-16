@@ -5,8 +5,10 @@
 // hoạt, model chấm bao nhiêu, metric nào lệch mạnh nhất, Agent đã gọi những tool
 // nào, mất bao lâu, và diễn giải bằng tiếng Việt.
 
+import { useState } from 'react'
+
 import type { AgentInsight } from '../lib/api'
-import { topDeviation } from '../lib/adapt'
+import { formatAge, topDeviation } from '../lib/adapt'
 
 // Tên tool backend -> nhãn đọc được, để hàng "Agent đã làm gì" không hiện raw snake_case.
 const TOOL_LABEL: Record<string, string> = {
@@ -110,20 +112,8 @@ function inline(text: string): React.JSX.Element {
   )
 }
 
-export function AiPanel({ insight }: { insight: AgentInsight | null }) {
-  if (!insight) {
-    return (
-      <div className="rounded-xl border border-dashed border-[var(--color-line)] p-5 text-center">
-        <div className="text-sm font-semibold text-[var(--color-ink-soft)]">
-          Chưa có bất thường nào
-        </div>
-        <div className="mt-1 text-xs text-[var(--color-ink-soft)]">
-          Agent chỉ được gọi khi model phát hiện dữ liệu bất thường — không chạy trên mọi gói tin.
-        </div>
-      </div>
-    )
-  }
-
+/** Một thẻ chẩn đoán đầy đủ — dùng cho cả bản ghi mới nhất và bản ghi cũ khi mở rộng. */
+function InsightCard({ insight }: { insight: AgentInsight }) {
   const deviation = insight.anomaly ? topDeviation(insight.anomaly) : null
   const score = insight.anomaly?.anomaly_score
 
@@ -138,6 +128,7 @@ export function AiPanel({ insight }: { insight: AgentInsight | null }) {
             {insight.device_code}
             {typeof insight.latency_ms === 'number' &&
               ` · phản hồi ${(insight.latency_ms / 1000).toFixed(1)}s`}
+            {` · ${formatAge(insight.ts)} trước`}
           </div>
         </div>
         {typeof score === 'number' && (
@@ -189,6 +180,86 @@ export function AiPanel({ insight }: { insight: AgentInsight | null }) {
       {insight.answer && (
         <div className="mt-4 max-h-80 overflow-y-auto rounded-lg bg-white p-4">
           <Markdown text={insight.answer} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Panel chẩn đoán + Incident Log.
+ *
+ * Bản ghi mới nhất luôn mở rộng đầy đủ. Các bản ghi cũ hơn thu gọn thành 1
+ * dòng (thiết bị, thời điểm, điểm bất thường) — bấm vào để mở chi tiết. Không
+ * dùng accordion "chỉ mở 1 cái" vì lúc pitch có thể cần so sánh 2 kịch bản đã
+ * demo trước đó cùng lúc.
+ */
+export function AiPanel({ insights }: { insights: AgentInsight[] }) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+
+  if (insights.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-[var(--color-line)] p-5 text-center">
+        <div className="text-sm font-semibold text-[var(--color-ink-soft)]">
+          Chưa có bất thường nào
+        </div>
+        <div className="mt-1 text-xs text-[var(--color-ink-soft)]">
+          Agent chỉ được gọi khi model phát hiện dữ liệu bất thường — không chạy trên mọi gói tin.
+        </div>
+      </div>
+    )
+  }
+
+  const [latest, ...older] = insights
+
+  function toggle(id: number) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <InsightCard insight={latest} />
+
+      {older.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
+            Lịch sử chẩn đoán ({older.length})
+          </div>
+          <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+            {older.map((item) => {
+              const isOpen = expanded.has(item.id)
+              const score = item.anomaly?.anomaly_score
+              return (
+                <div key={item.id}>
+                  <button
+                    onClick={() => toggle(item.id)}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-canvas)] px-3 py-2 text-left transition-colors hover:bg-[var(--color-field)]"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                      {item.device_name ?? item.device_code}
+                    </span>
+                    {typeof score === 'number' && (
+                      <span className="font-mono text-xs font-semibold text-[#a72f2f]">
+                        {score.toFixed(2)}
+                      </span>
+                    )}
+                    <span className="shrink-0 text-xs text-[var(--color-ink-soft)]">
+                      {formatAge(item.ts)} trước
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="mt-1.5">
+                      <InsightCard insight={item} />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>

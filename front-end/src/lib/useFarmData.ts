@@ -20,6 +20,7 @@ import { DEVICE_ORDER } from './adapt'
 
 const HISTORY_LIMIT = 120 // số bản ghi giữ lại mỗi thiết bị (đủ cho chart 3 tiếng)
 const RECONNECT_MAX_MS = 8000
+const INSIGHT_LIMIT = 20 // số chẩn đoán giữ lại trên UI, khớp INSIGHT_LOG_MAXLEN mặc định của backend
 
 export type FarmData = {
   live: boolean
@@ -29,7 +30,8 @@ export type FarmData = {
   records: Record<string, Reading[]>
   tasks: Task[]
   plans: Plan[]
-  insight: AgentInsight | null
+  /** Incident Log — mọi chẩn đoán gần đây, mới nhất trước. */
+  insights: AgentInsight[]
   /** device_code -> thời điểm (ms) model bắn cảnh báo gần nhất */
   anomalyAt: Record<string, number>
   veto: { action: string; reason: string; at: number } | null
@@ -45,7 +47,7 @@ const EMPTY: FarmData = {
   records: {},
   tasks: [],
   plans: [],
-  insight: null,
+  insights: [],
   anomalyAt: {},
   veto: null,
   lastUpdate: null,
@@ -61,11 +63,11 @@ export function useFarmData() {
   // ---- Nạp dữ liệu ban đầu qua REST -------------------------------------
   const loadRest = useCallback(async () => {
     try {
-      const [snapshot, tasksRes, plansRes, insightRes, statusRes] = await Promise.all([
+      const [snapshot, tasksRes, plansRes, insightsRes, statusRes] = await Promise.all([
         api.devices(),
         api.tasks(),
         api.plans(),
-        api.lastInsight(),
+        api.insights(INSIGHT_LIMIT),
         api.status(),
       ])
 
@@ -88,7 +90,7 @@ export function useFarmData() {
         records: Object.fromEntries(histories),
         tasks: tasksRes.tasks,
         plans: plansRes.plans,
-        insight: insightRes.insight,
+        insights: insightsRes.insights,
         scenario: statusRes.scenario,
         lastUpdate: Date.now(),
       }))
@@ -220,8 +222,13 @@ function reduce(prev: FarmData, msg: Envelope): FarmData {
         anomalyAt: { ...prev.anomalyAt, [msg.payload.device_code]: Date.now() },
       }
 
-    case 'agent_insight':
-      return { ...prev, insight: msg.payload }
+    case 'agent_insight': {
+      // Chèn vào ĐẦU Incident Log, mới nhất trước — không đè lên chẩn đoán cũ.
+      // Trùng id (VD: reload trang giữa lúc WS đang gửi cùng lúc REST vừa nạp)
+      // thì bỏ qua thay vì tạo bản sao.
+      if (prev.insights.some((i) => i.id === msg.payload.id)) return prev
+      return { ...prev, insights: [msg.payload, ...prev.insights].slice(0, INSIGHT_LIMIT) }
+    }
 
     case 'plan':
       return { ...prev, plans: upsert(prev.plans, msg.payload, 'plan_id') }

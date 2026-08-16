@@ -85,7 +85,7 @@ tool đã thực sự chạy kèm kết quả — đây là phần "giải thíc
 | `POST/GET /api/tasks` · `/{id}/complete` · `/{id}/verify` | Phiếu hiện trường + verification kèm chứng cứ telemetry |
 | `GET /api/resources/water-budget` · `/staff` | Ngân sách nước, nhân sự |
 | `POST /api/agent/request` | Hỏi Agent bằng tiếng Việt, trả `{answer, trace}` |
-| `GET /api/agent/last-insight` | Chẩn đoán gần nhất — dashboard gọi lúc load, và làm dự phòng khi LLM chết |
+| `GET /api/agent/insights?limit=` | Incident Log — mọi chẩn đoán gần đây (mặc định 20, mới nhất trước), không chỉ cái cuối. Dashboard gọi lúc load, và làm dự phòng khi LLM chết |
 
 ### Demo (chuẩn bị sẵn cho pitch)
 

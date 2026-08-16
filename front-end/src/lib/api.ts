@@ -59,6 +59,8 @@ export type TelemetryPayload = {
 export type TraceCall = { tool: string; args?: unknown; result?: Record<string, unknown> }
 
 export type AgentInsight = {
+  id: number
+  ts: number
   trigger: string
   device_code: string
   device_name?: string
@@ -159,8 +161,9 @@ export const api = {
   verifyTask: (id: string) =>
     request<{ task: Task }>(`/api/tasks/${id}/verify`, { method: 'POST' }),
 
-  lastInsight: () =>
-    request<{ available: boolean; insight: AgentInsight | null }>('/api/agent/last-insight'),
+  // Incident Log — mọi chẩn đoán gần đây, mới nhất trước.
+  insights: (limit = 20) =>
+    request<{ available: boolean; insights: AgentInsight[] }>(`/api/agent/insights?limit=${limit}`),
 
   // Nút demo cho lúc pitch — giá trị bơm vào đi qua đúng đường ống như dữ liệu thật.
   inject: (device_code: string, metrics: Record<string, number>) =>

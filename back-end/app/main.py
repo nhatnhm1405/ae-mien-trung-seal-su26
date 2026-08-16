@@ -483,14 +483,16 @@ async def agent_request(req: AgentRequest):
     return result
 
 
-@app.get("/api/agent/last-insight", tags=["6. Phân tích & AI"])
-def last_insight():
-    """Chẩn đoán gần nhất do pipeline tự sinh khi phát hiện bất thường.
-    Dashboard gọi cái này lúc mới load để không trống trơn, và làm phương án dự
-    phòng khi LLM hết quota giữa buổi demo."""
-    if pipeline.last_insight is None:
-        return {"available": False, "insight": None}
-    return {"available": True, "insight": pipeline.last_insight}
+@app.get("/api/agent/insights", tags=["6. Phân tích & AI"])
+def agent_insights(limit: int = Query(default=20, ge=1, le=pipeline.INSIGHT_LOG_MAXLEN)):
+    """Incident Log — mọi chẩn đoán mà pipeline tự sinh khi phát hiện bất
+    thường, mới nhất trước. Đây là bước 8 trong sequence diagram của BTC
+    ("Agent cập nhật Incident Log và giải thích quyết định lên Dashboard") —
+    trước đây chỉ giữ đúng 1 bản ghi, chẩn đoán trước bị chẩn đoán sau ghi đè
+    và không xem lại được. Dashboard gọi cái này lúc mới load để không trống
+    trơn, và làm phương án dự phòng khi LLM hết quota giữa buổi demo."""
+    insights = pipeline.get_insights(limit)
+    return {"available": len(insights) > 0, "insights": insights}
 
 
 @app.get("/api/agent/debug/assess-irrigation", tags=["6. Phân tích & AI"])

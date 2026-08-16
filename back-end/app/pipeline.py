@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 
 from app.config import AGENT_COOLDOWN_SECONDS, AGENT_ON_ANOMALY, DEVICES
 from app import events
@@ -41,9 +42,34 @@ _missing_model_warned: set[str] = set()
 _last_agent_call: dict[str, float] = {}
 _agent_lock = threading.Lock()
 
-# Bản ghi chẩn đoán gần nhất — giữ lại để dashboard vẫn có gì đó hiển thị khi
-# LLM hết quota hoặc mất mạng giữa buổi demo.
-last_insight: dict | None = None
+# ---------------------------------------------------------------------------
+# Incident Log — bước 8 trong sequence diagram của BTC: "Agent cập nhật
+# Incident Log và giải thích quyết định lên Dashboard". Trước đây chỗ này chỉ
+# giữ ĐÚNG 1 bản ghi (last_insight = insight), nên chẩn đoán trước bị chẩn
+# đoán sau ghi đè mất — demo 2 kịch bản liên tiếp thì kịch bản đầu biến mất
+# khỏi dashboard không cách nào xem lại. Giờ giữ tối đa INSIGHT_LOG_MAXLEN bản
+# ghi gần nhất, mới nhất ở đầu.
+# ---------------------------------------------------------------------------
+INSIGHT_LOG_MAXLEN = 30
+insight_log: deque[dict] = deque(maxlen=INSIGHT_LOG_MAXLEN)
+_insight_lock = threading.Lock()
+_next_insight_id = 1
+
+
+def record_insight(insight: dict) -> dict:
+    """Gắn id + ts rồi thêm vào đầu Incident Log (mới nhất trước). Thread-safe
+    vì nhiều thiết bị bất thường cùng lúc sẽ chạy _run_agent song song."""
+    global _next_insight_id
+    with _insight_lock:
+        insight = {"id": _next_insight_id, "ts": time.time(), **insight}
+        _next_insight_id += 1
+        insight_log.appendleft(insight)
+    return insight
+
+
+def get_insights(limit: int = 20) -> list[dict]:
+    with _insight_lock:
+        return list(insight_log)[:limit]
 
 
 def _predict(device_code: str, reading: dict) -> dict | None:
@@ -81,8 +107,6 @@ def _should_call_agent(device_code: str) -> bool:
 
 def _run_agent(device_code: str, anomaly: dict, reading: dict) -> None:
     """Gọi Coordinator Agent để chẩn đoán 1 bất thường. Chạy trong thread riêng."""
-    global last_insight
-
     from app.agents import coordinator_agent
 
     spec = DEVICES.get(device_code)
@@ -105,18 +129,18 @@ def _run_agent(device_code: str, anomaly: dict, reading: dict) -> None:
         result = coordinator_agent.handle_request(question)
     except Exception as exc:
         logger.error("Agent xử lý anomaly %s thất bại: %s", device_code, exc, exc_info=True)
-        events.emit_threadsafe(
-            "agent_insight",
-            {
-                "trigger": f"anomaly:{device_code}",
-                "device_code": device_code,
-                "error": str(exc),
-                "answer": None,
-            },
-        )
+        insight = record_insight({
+            "trigger": f"anomaly:{device_code}",
+            "device_code": device_code,
+            "device_name": device_name,
+            "error": str(exc),
+            "answer": None,
+            "trace": [],
+        })
+        events.emit_threadsafe("agent_insight", insight)
         return
 
-    insight = {
+    insight = record_insight({
         "trigger": f"anomaly:{device_code}",
         "device_code": device_code,
         "device_name": device_name,
@@ -126,8 +150,7 @@ def _run_agent(device_code: str, anomaly: dict, reading: dict) -> None:
         "answer": result.get("answer"),
         "trace": result.get("trace", []),
         "latency_ms": round((time.time() - started) * 1000),
-    }
-    last_insight = insight
+    })
     events.emit_threadsafe("agent_insight", insight)
 
     # Tool nào đã tạo ra hành động thật thì đẩy riêng 1 sự kiện để dashboard

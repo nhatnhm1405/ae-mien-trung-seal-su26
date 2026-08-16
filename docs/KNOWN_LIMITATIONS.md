@@ -9,20 +9,19 @@
 
 ## 1. Chưa làm — cần trước khi thi
 
-### 1.1. Không có nút "Xác minh" trên UI
-`POST /api/tasks/{id}/verify` đã hoạt động đúng (test bằng curl: trả
+### 1.1. [ĐÃ SỬA 16/08] Không có nút "Xác minh" trên UI
+`POST /api/tasks/{id}/verify` đã hoạt động đúng từ trước (test bằng curl: trả
 `verification_status: PASSED`, `confidence_score: 1.0`), và `useFarmData.ts`
 đã có sẵn `actions.verifyTask()`. Nhưng **không có nút nào trong `App.tsx` gọi
 nó** — cột "Xác minh gần nhất" chỉ hiện log suy ra từ plan/task đã đổi trạng
 thái (`toVerificationViews`), không phải hành động xác minh thật do người dùng
 bấm.
 
-**Ảnh hưởng:** tiêu chí "có verification sau hành động" chỉ được đáp ứng ngầm
-(qua approve/reject), chưa có luồng người dùng chủ động xác minh 1 task cụ thể
-để demo.
-
-**Cách sửa nhanh:** thêm nút "Xác minh" vào từng dòng trong bảng Nhiệm vụ, gọi
-`actions.verifyTask(t.id)`.
+**Đã sửa:** thêm cột "Hành động" vào bảng Nhiệm vụ với nút "Xác minh" cho
+từng task chưa qua verification (chỉ hiện khi có `task.id` thật, không hiện
+trên dữ liệu mẫu). Sau khi bấm, nút đổi thành "Đã xác minh". Đã kiểm chứng
+qua backend thật: `open` → `verified`, `verification_proof.verification_status
+= "PASSED"`.
 
 ### 1.2. `.env.example` thiếu biến cấu hình mới
 Sau khi hợp nhất, `app/config.py` đọc thêm `AGENT_COOLDOWN_SECONDS`,
@@ -82,6 +81,46 @@ lần/30s). Model vẫn bắt đúng cực đoan thật khi test tay: `ph=1.0` �
   test của BTC dao động ngẫu nhiên quanh 0, không có xu hướng vật lý để học,
   refit `irrigation_model` bằng dữ liệu này từng cho MAE tệ hơn cả đoán trung
   bình (R² âm, đã thử nghiệm trước đó).
+
+---
+
+## 1.6. [ĐÃ SỬA 16/08] Chẩn đoán AI trước đó bị ghi đè mất, không xem lại được
+
+**Triệu chứng:** panel "Chẩn đoán của AI" chỉ hiện được đúng 1 kết quả — Agent
+chẩn đoán xong sự cố A, 2 phút sau sự cố B xảy ra và Agent chẩn đoán, thì chẩn
+đoán A **biến mất hoàn toàn** khỏi cả UI lẫn API, không cách nào xem lại.
+
+**Nguyên nhân gốc:** `pipeline.py` chỉ có 1 biến `last_insight: dict | None`
+(không phải danh sách) — mỗi lần Agent chẩn đoán xong, dòng `last_insight =
+insight` ghi đè thẳng lên bản trước. Phía frontend (`useFarmData.ts`) cũng chỉ
+giữ `insight: AgentInsight | null` — 1 object duy nhất, message WS mới đè lên
+message cũ trong state.
+
+**Vì sao đây là gap thật, không chỉ thẩm mỹ:** bước 8 trong sequence diagram
+của BTC (`docs/HACKATHON_CONTEXT.md`) ghi rõ *"Agent cập nhật **Incident Log**
+và giải thích quyết định lên Dashboard"* — chữ "Log" ngụ ý một danh sách nhiều
+sự cố theo thời gian, không phải chỉ giữ bản ghi cuối. Demo 2 kịch bản liên
+tiếp (VD: hạn hán SOIL_01 rồi VETO PH_01) để khoe cả 2 case cho giám khảo thì
+kịch bản đầu sẽ trôi mất trước khi kịp trình bày xong kịch bản 2.
+
+**Đã sửa:**
+- Backend: `pipeline.py` đổi `last_insight` (1 object) thành `insight_log`
+  (deque, `maxlen=INSIGHT_LOG_MAXLEN=30`, mới nhất ở đầu), gắn `id` tăng dần +
+  `ts` cho mỗi bản ghi, thread-safe bằng lock riêng (nhiều thiết bị bất thường
+  cùng lúc → nhiều thread `_run_agent` chạy song song). Endpoint đổi từ
+  `GET /api/agent/last-insight` thành `GET /api/agent/insights?limit=` trả về
+  danh sách.
+- Frontend: `useFarmData.ts` đổi `insight` thành `insights: AgentInsight[]`,
+  message WS mới được **chèn vào đầu** mảng (có dedupe theo `id`) thay vì đè.
+  `AiPanel.tsx` tách thành `InsightCard` (1 thẻ đầy đủ) dùng cho bản ghi mới
+  nhất (luôn mở rộng) + danh sách "Lịch sử chẩn đoán" thu gọn bên dưới (bấm để
+  mở chi tiết từng cái, không giới hạn chỉ mở 1 cái tại một thời điểm — để có
+  thể so sánh 2 kịch bản cùng lúc lúc pitch).
+
+**Kiểm chứng:** kích hoạt 3 sự cố liên tiếp (SOIL_01, rồi PH_01, cách nhau
+~35s) trên backend thật — cả 3 đều còn nguyên trong `/api/agent/insights`
+(id 1–7, có cả vài cái tự phát sinh từ dữ liệu thật xen giữa), đúng thứ tự
+mới nhất trước, không cái nào bị mất.
 
 ---
 
@@ -228,10 +267,11 @@ Nên cập nhật `back-end/README.md` với cả 2 biến thể lệnh (bash v�
    `python -m app.ml.live_train` khoảng 1–2 phút ngay khi có dữ liệu thật từ
    BTC, trước khi demo (§1.5) — nếu không PH_01 (và có thể thiết bị khác) sẽ
    đỏ liên tục do model train trên dữ liệu tổng hợp có dải hẹp hơn thực tế.
-2. **Bắt buộc:** thêm nút "Xác minh" vào bảng Nhiệm vụ (§1.1) — thiếu thì
-   không đáp ứng đủ tiêu chí verification qua UI.
-3. **Nên làm:** thêm `check_pump_guardrail()` vào `create_irrigation_plan()`
-   (§1.3) — hiện guardrail bơm chỉ trang trí, không chặn thật.
+2. ~~Thêm nút "Xác minh" vào bảng Nhiệm vụ~~ — **đã sửa** (§1.1).
+3. **Còn tồn đọng, chưa sửa (đã quyết định giữ nguyên):** guardrail bơm chỉ
+   trang trí, không chặn thật khi tạo kế hoạch tưới qua tool
+   (§1.3) — `check_pump_guardrail()` chưa được gọi trong
+   `create_irrigation_plan()`.
 4. **Nên làm:** cập nhật `.env.example` (§1.2) và `README.md` với lệnh
    PowerShell (§5.1) — tránh đồng đội mất thời gian debug lệnh sai cú pháp
    ngay trước giờ thi.
@@ -239,3 +279,5 @@ Nên cập nhật `back-end/README.md` với cả 2 biến thể lệnh (bash v�
    §2.2) để Agent nhanh hơn và không lộ suy nghĩ nội bộ.
 6. **Bắt buộc trước khi thi thật:** mở trình duyệt thật xem giao diện ít nhất
    một lần (§2.6) — chưa ai xác nhận bằng mắt.
+7. ~~Chẩn đoán AI trước đó bị ghi đè mất~~ — **đã sửa**, giờ là Incident Log
+   giữ tối đa 30 bản ghi (§1.6).
