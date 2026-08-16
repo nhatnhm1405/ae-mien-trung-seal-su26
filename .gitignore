@@ -1,28 +1,28 @@
+# --- Biến môi trường / Thông tin nhạy cảm ---
+.env
+.env.*
+!.env.example
+
 # --- Python ---
 __pycache__/
 *.py[cod]
 *.egg-info/
+dist/
+build/
 .venv/
 venv/
 env/
 .pytest_cache/
 
-# --- ML model artifacts ---
+# --- Model artifacts (ML) ---
 *.pkl
 *.joblib
 *.h5
 *.onnx
 model_checkpoint*
 
-# --- Secrets / env ---
-.env
-.env.*
-!.env.example
-
 # --- Node / Frontend ---
 node_modules/
-dist/
-build/
 .vite/
 
 # --- OS / Editor ---
