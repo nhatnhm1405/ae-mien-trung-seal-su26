@@ -1,5 +1,9 @@
 {
+  "title": "AeMT",
   "description": "Manage smart farm operations with a user-friendly dashboard that displays real-time IoT device data, irrigation plans, and task management in Vietnamese.",
+  "icons": {
+    "icon": "/logo-sprout.png"
+  },
   "robots": {
     "index": false
   },
