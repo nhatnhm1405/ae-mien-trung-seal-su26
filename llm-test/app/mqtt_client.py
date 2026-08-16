@@ -23,6 +23,9 @@ from app.config import (
     MQTT_BROKER_PORT,
     MQTT_USERNAME,
     MQTT_PASSWORD,
+    MQTT_TRANSPORT,
+    MQTT_USE_TLS,
+    MQTT_WS_PATH,
     USE_SINGLE_TOPIC,
     SINGLE_TOPIC,
     topic_for,
@@ -36,42 +39,83 @@ logging.basicConfig(level=logging.INFO)
 # ---------------------------------------------------------------------------
 # Chế độ 1: MQTT thật
 # ---------------------------------------------------------------------------
-def parse_payload(payload_bytes: bytes) -> tuple[str | None, dict, float | None]:
-    """Parse JSON payload MQTT thành (device_code, metrics, event_time).
+def parse_payload(payload_bytes: bytes) -> tuple[list[tuple[str, dict]], float | None, dict]:
+    """Parse JSON payload MQTT thật của BTC — xác nhận qua MQTTX thực tế:
 
-    Giả định payload dạng: {"device_code": "SOIL_01", "timestamp": <epoch hoặc ISO>, "soil_moisture": 42.1, "temperature": 27.0}
-    Nếu schema thật của BTC khác, CHỈ CẦN SỬA HÀM NÀY.
+        {
+          "timestamp": "2026-08-16T02:55:03.151Z", "epoch": 1786848903,
+          "environment": "FARM", "scenario": "NORMAL",
+          "devices": [
+            {"deviceCode": "PH_01", "status": "ok", "metrics": {"ph": 7.8}},
+            {"deviceCode": "PUMP_01", "status": "ok", "metrics": {"flow_rate": 20.6, "power": 574.8}},
+            ...
+          ],
+          "teamCode": "AE_MIEN_TRUNG"
+        }
+
+    Khác hẳn giả định ban đầu (1 message/1 thiết bị) — BTC gộp CẢ 6 thiết bị vào 1
+    message duy nhất trên 1 topic chung. Trả về:
+      - list[(device_code, metrics)] cho từng thiết bị trong message
+      - event_time chung (epoch giây) cho cả message
+      - meta: {"environment":..., "scenario":..., "teamCode":...} — "scenario" đặc biệt
+        đáng chú ý, có thể BTC đổi thành "ANOMALY" lúc demo/chấm điểm.
     """
     try:
         data = json.loads(payload_bytes.decode("utf-8"))
     except Exception:
         logger.warning("Payload không phải JSON hợp lệ: %r", payload_bytes[:200])
-        return None, {}, None
+        return [], None, {}
 
-    device_code = data.get("device_code") or data.get("device") or data.get("id")
-    ts_raw = data.get("timestamp") or data.get("ts") or data.get("event_time")
     event_time = None
-    if ts_raw is not None:
+    if data.get("epoch") is not None:
         try:
-            event_time = float(ts_raw)  # epoch numeric
+            event_time = float(data["epoch"])
         except (TypeError, ValueError):
-            try:
-                from datetime import datetime
-                event_time = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00")).timestamp()
-            except Exception:
-                event_time = None
+            event_time = None
+    if event_time is None and data.get("timestamp"):
+        try:
+            from datetime import datetime
+            event_time = datetime.fromisoformat(str(data["timestamp"]).replace("Z", "+00:00")).timestamp()
+        except Exception:
+            event_time = None
 
-    metrics = {
-        k: v for k, v in data.items()
-        if k not in ("device_code", "device", "id", "timestamp", "ts", "event_time")
-        and isinstance(v, (int, float))
+    devices_raw = data.get("devices")
+    parsed: list[tuple[str, dict]] = []
+    if isinstance(devices_raw, list):
+        for dev in devices_raw:
+            if not isinstance(dev, dict):
+                continue
+            device_code = dev.get("deviceCode") or dev.get("device_code")
+            metrics = dev.get("metrics") or {}
+            metrics = {k: v for k, v in metrics.items() if isinstance(v, (int, float))}
+            if device_code and metrics:
+                parsed.append((device_code, metrics))
+    else:
+        # fallback: payload dạng phẳng cũ (1 message/1 thiết bị) — phòng khi BTC đổi schema
+        device_code = data.get("device_code") or data.get("device") or data.get("id")
+        metrics = {
+            k: v for k, v in data.items()
+            if k not in ("device_code", "device", "id", "timestamp", "ts", "epoch", "event_time")
+            and isinstance(v, (int, float))
+        }
+        if device_code and metrics:
+            parsed.append((device_code, metrics))
+
+    meta = {
+        "environment": data.get("environment"),
+        "scenario": data.get("scenario"),
+        "teamCode": data.get("teamCode"),
     }
-    return device_code, metrics, event_time
+    return parsed, event_time, meta
 
 
 def run_mqtt_client(host: str = MQTT_BROKER_HOST, port: int = MQTT_BROKER_PORT):
     """Kết nối vào broker MQTT thật và subscribe topic thiết bị.
-    QoS = 1 theo khuyến nghị (đảm bảo tới, chấp nhận trùng lặp)."""
+
+    Broker BTC chạy sau Cloudflare trên cổng 443 -> bắt buộc dùng MQTT over
+    WebSocket Secure (wss), không phải TCP thuần. Đường dẫn WS lấy từ
+    MQTT_WS_PATH trong .env (mặc định "/mqtt", sửa theo giá trị thật đã xác
+    nhận qua MQTTX nếu khác)."""
     import paho.mqtt.client as mqtt
 
     if not host:
@@ -82,24 +126,35 @@ def run_mqtt_client(host: str = MQTT_BROKER_HOST, port: int = MQTT_BROKER_PORT):
     def on_connect(client, userdata, flags, reason_code, properties=None):
         logger.info("Đã kết nối MQTT broker %s:%s (rc=%s)", host, port, reason_code)
         if USE_SINGLE_TOPIC:
-            client.subscribe(SINGLE_TOPIC, qos=1)
+            client.subscribe(SINGLE_TOPIC, qos=0)
             logger.info("Subscribed (single topic): %s", SINGLE_TOPIC)
         else:
             for code in DEVICES:
                 topic = topic_for(code)
-                client.subscribe(topic, qos=1)
+                client.subscribe(topic, qos=0)
                 logger.info("Subscribed: %s", topic)
 
     def on_message(client, userdata, msg):
-        device_code, metrics, event_time = parse_payload(msg.payload)
-        if device_code and metrics:
+        devices, event_time, meta = parse_payload(msg.payload)
+        if meta.get("scenario") and meta["scenario"] != "NORMAL":
+            logger.warning("BTC scenario != NORMAL: %s (meta=%s)", meta["scenario"], meta)
+        if not devices:
+            logger.warning("Payload không có thiết bị hợp lệ nào: %s", msg.payload[:200])
+            return
+        for device_code, metrics in devices:
             ok = farm_state.ingest(device_code, metrics, event_time=event_time)
             if not ok:
                 logger.warning("Nhận dữ liệu từ thiết bị lạ (ngoài danh mục): %s", device_code)
-        else:
-            logger.warning("Payload thiếu device_code hoặc metrics số: %s", msg.payload[:200])
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv311)
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2,
+        protocol=mqtt.MQTTv311,
+        transport=MQTT_TRANSPORT,
+    )
+    if MQTT_TRANSPORT == "websockets" and MQTT_WS_PATH:
+        client.ws_set_options(path=MQTT_WS_PATH)
+    if MQTT_USE_TLS:
+        client.tls_set()
     if MQTT_USERNAME:
         client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     client.on_connect = on_connect

@@ -19,6 +19,7 @@ import os
 import asyncio
 import json
 import logging
+import threading
 from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -26,7 +27,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.state import farm_state
-from app.mqtt_client import start_simulator, inject_anomaly, freeze_device, unfreeze_device
+from app.mqtt_client import (
+    start_simulator,
+    inject_anomaly,
+    freeze_device,
+    unfreeze_device,
+    run_mqtt_client,
+)
 from app import tools
 from app.agents import coordinator_agent, irrigation_resource_agent
 
@@ -46,20 +53,27 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# Simulator lifecycle (chỉ dùng dev/test)
+# Simulator / MQTT client lifecycle
 # ---------------------------------------------------------------------------
 _sim_thread = None
 _sim_stop_event = None
+_mqtt_thread = None
 
 
 @app.on_event("startup")
 def on_startup():
-    global _sim_thread, _sim_stop_event
+    global _sim_thread, _sim_stop_event, _mqtt_thread
     if SIMULATE:
         _sim_thread, _sim_stop_event = start_simulator(interval_seconds=3.0)
         logger.info("SIMULATE=true -> đang dùng dữ liệu giả lập, không phải MQTT thật.")
     else:
-        logger.info("SIMULATE=false -> chạy app/mqtt_client.py song song để nhận dữ liệu thật.")
+        # QUAN TRỌNG: chạy MQTT client CÙNG process với server (thread nền), không phải
+        # tiến trình riêng như README cũ hướng dẫn — farm_state là biến RAM trong 1
+        # process, chạy `python -m app.mqtt_client` tách rời sẽ KHÔNG BAO GIỜ chia sẻ
+        # được dữ liệu với process uvicorn (đã xác nhận bug này khi test broker thật).
+        _mqtt_thread = threading.Thread(target=run_mqtt_client, daemon=True)
+        _mqtt_thread.start()
+        logger.info("SIMULATE=false -> đã khởi động MQTT client thật trong background thread (cùng process).")
 
 
 # ---------------------------------------------------------------------------

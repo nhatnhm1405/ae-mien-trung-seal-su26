@@ -28,6 +28,12 @@ MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 MQTT_TEST_KEY = os.environ.get("MQTT_TEST_KEY")  # chưa rõ mục đích, xem ghi chú README
 
+# Broker BTC chạy sau Cloudflare trên cổng 443 -> xác nhận qua MQTTX là bắt buộc
+# dùng MQTT over WebSocket Secure (wss), không phải TCP thuần như mặc định paho-mqtt.
+MQTT_TRANSPORT = os.environ.get("MQTT_TRANSPORT", "websockets")  # "tcp" hoặc "websockets"
+MQTT_USE_TLS = os.environ.get("MQTT_USE_TLS", "true").lower() == "true"
+MQTT_WS_PATH = os.environ.get("MQTT_WS_PATH", "/mqtt")  # chỉ dùng khi MQTT_TRANSPORT=websockets
+
 # BTC cấp 1 topic test dùng chung cho toàn đội test kết nối, không phải 1 topic/thiết bị
 # -> mặc định dùng chế độ single-topic; parse_payload() phải tự đọc device_code trong JSON.
 MQTT_TOPIC_PREFIX = "farm"  # dự phòng nếu sau này đổi sang mỗi thiết bị 1 topic riêng

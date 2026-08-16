@@ -13,15 +13,15 @@ Mặc định `SIMULATE=true` — server tự phát dữ liệu giả cho cả 6
 
 Xem docs tự sinh tại `http://localhost:8000/docs`.
 
-## Sáng Ngày 2, khi có broker thật của BTC
+## Khi có broker thật của BTC
 
-1. Mở `app/config.py`, sửa 3 dòng: `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT`, `MQTT_TOPIC_PREFIX` (hoặc `SINGLE_TOPIC` nếu BTC dùng 1 topic chung).
-2. Nếu schema JSON payload của BTC khác với giả định (`device_code`, `timestamp`, rồi các field số), sửa hàm `parse_payload()` trong `app/mqtt_client.py` — đây là **chỗ duy nhất** cần sửa.
-3. Chạy:
+1. Copy `.env.example` → `.env`, điền `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT`, `MQTT_USERNAME/PASSWORD`, `MQTT_TEST_TOPIC` (broker thật đội mình đang dùng chạy sau Cloudflare cổng 443 → cần `MQTT_TRANSPORT=websockets`, `MQTT_USE_TLS=true`, `MQTT_WS_PATH=/mqtt` — đã xác nhận qua MQTTX + `paho-mqtt` thật).
+2. Payload thật của BTC là **1 message chứa cả 6 thiết bị** (`{"devices": [{"deviceCode": "SOIL_01", "metrics": {...}}, ...]}`), không phải 1 message/1 thiết bị như giả định ban đầu — `parse_payload()` trong `app/mqtt_client.py` đã được viết lại theo đúng schema này, có fallback cho schema phẳng cũ nếu BTC đổi lại.
+3. Chạy **chỉ 1 lệnh**:
    ```bash
-   SIMULATE=false uvicorn app.main:app --port 8000 &
-   python -m app.mqtt_client   # kết nối broker thật, đổ dữ liệu vào cùng state
+   SIMULATE=false uvicorn app.main:app --port 8000
    ```
+   MQTT client thật chạy trong background thread của CHÍNH process này (`on_startup` trong `main.py`) — **không chạy `python -m app.mqtt_client` như 1 tiến trình riêng**, vì `farm_state` là biến RAM trong 1 process, chạy tách rời sẽ không bao giờ chia sẻ được dữ liệu với server (bug đã gặp và sửa lúc test broker thật).
 
 ## Cho bạn AI/ML (Irrigation Planning / Resource Agent)
 
