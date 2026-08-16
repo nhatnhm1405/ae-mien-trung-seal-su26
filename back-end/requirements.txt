@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+scikit-learn
+pandas
+paho-mqtt
+joblib
+python-dotenv
+openai
