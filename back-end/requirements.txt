@@ -6,3 +6,4 @@ paho-mqtt
 joblib
 python-dotenv
 openai
+numpy
