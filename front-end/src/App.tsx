@@ -1,5 +1,15 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { METRIC_COLOR, Sparkline, TrendChart, type SeriesPoint } from './components/charts'
+import { AiPanel } from './components/AiPanel'
+import { useFarmData } from './lib/useFarmData'
+import {
+  heroHistories,
+  toDeviceViews,
+  toSeries,
+  toTaskViews,
+  toVerificationViews,
+  type DeviceView,
+} from './lib/adapt'
 
 type Status = 'ok' | 'warn' | 'danger' | 'offline'
 
@@ -195,15 +205,13 @@ function AgentBadge({ agent, label }: { agent: string; label?: string }) {
   )
 }
 
-// ---- Data ---------------------------------------------------------------
+// ---- Dữ liệu dự phòng ----------------------------------------------------
+//
+// Chỉ dùng khi CHƯA kết nối được backend. Giữ lại có chủ đích: mất mạng giữa
+// buổi demo thì dashboard vẫn có hình để trình bày thay vì trắng trơn — nhưng
+// thanh trạng thái trên đầu sẽ ghi rõ "Dữ liệu mẫu" để không ai nhầm là số thật.
 
-const devices: {
-  id: string
-  name: string
-  status: Status
-  age: string
-  metrics: { label: string; value: string; history?: number[] }[]
-}[] = [
+const mockDevices: DeviceView[] = [
   {
     id: 'SOIL_01',
     name: 'Cảm biến đất',
@@ -260,7 +268,7 @@ const devices: {
 // 3 tiếng gần nhất, mỗi điểm cách nhau 15 phút — dùng cho 2 chart xu hướng chính.
 // Độ ẩm đất & mực nước bồn đều đang giảm dần dù số hiện tại chưa ở mức báo động,
 // đúng tinh thần "sliding window bắt xu hướng" của đề bài.
-const soilMoistureTrend: SeriesPoint[] = [
+const mockSoilMoistureTrend: SeriesPoint[] = [
   { label: '−3 giờ', value: 76 },
   { label: '−2g45', value: 75 },
   { label: '−2g30', value: 75 },
@@ -276,7 +284,7 @@ const soilMoistureTrend: SeriesPoint[] = [
   { label: 'Hiện tại', value: 68 },
 ]
 
-const tankLevelTrend: SeriesPoint[] = [
+const mockTankLevelTrend: SeriesPoint[] = [
   { label: '−3 giờ', value: 81 },
   { label: '−2g45', value: 80 },
   { label: '−2g30', value: 80 },
@@ -292,16 +300,15 @@ const tankLevelTrend: SeriesPoint[] = [
   { label: 'Hiện tại', value: 72 },
 ]
 
-const onlineDeviceCount = devices.filter((d) => d.status !== 'offline').length
-
 type Task = {
+  id?: string
   name: string
   agent: string[]
   status: 'Chờ' | 'Đang xử lý' | 'Hoàn tất'
   time: string
 }
 
-const initialTasks: Task[] = [
+const mockTasks: Task[] = [
   { name: 'Tưới Khu A', agent: ['Irrigation Planning', 'Farm Action'], status: 'Đang xử lý', time: '06:12' },
   { name: 'Đọc dữ liệu SOIL_01', agent: ['Field IoT'], status: 'Hoàn tất', time: '05:40' },
   { name: 'Xác nhận nguồn nước TANK_01', agent: ['Resource'], status: 'Hoàn tất', time: '05:30' },
@@ -315,7 +322,7 @@ type Verification = {
   result: 'Thành công' | 'Thất bại'
 }
 
-const initialVerifications: Verification[] = [
+const mockVerifications: Verification[] = [
   { name: 'Van tưới Khu A', result: 'Thành công' },
   { name: 'Cảm biến SOIL_01', result: 'Thành công' },
   { name: 'Kết nối SUN_01', result: 'Thất bại' },
@@ -336,39 +343,77 @@ const PLAN_CARD_STYLE = 'border-[#bfe3c4] bg-[#e6f5e8]'
 // ---- App ----------------------------------------------------------------
 
 export default function App() {
-  const [planStatus, setPlanStatus] = useState<'pending' | 'approved' | 'rejected'>('pending')
-  const [taskList, setTaskList] = useState(initialTasks)
-  const [verificationLog, setVerificationLog] = useState(initialVerifications)
+  const { data, actions } = useFarmData()
+  const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  function handleApprove() {
-    if (planStatus !== 'pending') return
-    setPlanStatus('approved')
-    setTaskList((prev) =>
-      prev.map((t) => (t.name === 'Tưới Khu A' ? { ...t, status: 'Hoàn tất' } : t)),
-    )
-    setVerificationLog((prev) => [
-      { name: 'Duyệt kế hoạch tưới Khu A', result: 'Thành công' },
-      ...prev,
-    ])
+  // Khi backend chưa trả dữ liệu, mọi thứ rơi về bộ mẫu — xem ghi chú ở mockDevices.
+  const devices = useMemo(
+    () =>
+      data.live && Object.keys(data.snapshot).length > 0
+        ? toDeviceViews(data.snapshot, heroHistories(data.records), data.anomalyAt)
+        : mockDevices,
+    [data.live, data.snapshot, data.records, data.anomalyAt],
+  )
+
+  const taskList = useMemo(
+    () => (data.live ? toTaskViews(data.tasks) : mockTasks),
+    [data.live, data.tasks],
+  )
+
+  const verificationLog = useMemo(
+    () => (data.live ? toVerificationViews(data.tasks, data.plans) : mockVerifications),
+    [data.live, data.tasks, data.plans],
+  )
+
+  const soilTrend = useMemo(() => {
+    const s = toSeries(data.records.SOIL_01 ?? [], 'soil_moisture')
+    return s.length >= 2 ? s : mockSoilMoistureTrend
+  }, [data.records])
+
+  const tankTrend = useMemo(() => {
+    const s = toSeries(data.records.TANK_01 ?? [], 'level')
+    return s.length >= 2 ? s : mockTankLevelTrend
+  }, [data.records])
+
+  // Kế hoạch mới nhất — ưu tiên cái đang chờ duyệt, vì đó là cái người quản lý cần xử lý.
+  const plan = useMemo(() => {
+    if (!data.live || data.plans.length === 0) return null
+    return data.plans.find((p) => p.status === 'pending_approval') ?? data.plans[0]
+  }, [data.live, data.plans])
+
+  const onlineDeviceCount = devices.filter((d) => d.status !== 'offline').length
+  const planStatus: 'pending' | 'approved' | 'rejected' = !plan
+    ? 'pending'
+    : plan.status === 'confirmed'
+      ? 'approved'
+      : plan.status === 'rejected'
+        ? 'rejected'
+        : 'pending'
+
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true)
+    setActionError(null)
+    try {
+      await fn()
+    } catch (err) {
+      setActionError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
 
-  function handleReject() {
-    if (planStatus !== 'pending') return
-    setPlanStatus('rejected')
-    setTaskList((prev) =>
-      prev.map((t) => (t.name === 'Tưới Khu A' ? { ...t, status: 'Chờ' } : t)),
-    )
-    setVerificationLog((prev) => [
-      { name: 'Từ chối kế hoạch tưới Khu A', result: 'Thành công' },
-      ...prev,
-    ])
-  }
+  const handleApprove = () => plan && run(() => actions.approvePlan(plan.plan_id))
+  const handleReject = () => plan && run(() => actions.rejectPlan(plan.plan_id))
 
-  function handleResetDemo() {
-    setPlanStatus('pending')
-    setTaskList((prev) =>
-      prev.map((t) => (t.name === 'Tưới Khu A' ? { ...t, status: 'Đang xử lý' } : t)),
-    )
+  // Nút "Bơm sự cố": ép độ ẩm đất xuống 3% — model bắt bất thường, Agent chẩn đoán.
+  const handleInjectDrought = () =>
+    run(() => actions.inject('SOIL_01', { soil_moisture: 3.0 }))
+
+  // Kịch bản 3: cảm biến ngừng gửi dữ liệu.
+  const handleToggleSun = () => {
+    const sun = devices.find((d) => d.id === 'SUN_01')
+    return run(() => (sun?.status === 'offline' ? actions.unfreeze('SUN_01') : actions.freeze('SUN_01')))
   }
 
   return (
@@ -387,18 +432,49 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Dot status="ok" size={10} />
-            <span className="text-sm font-semibold">Online</span>
+            <Dot status={data.connected ? 'ok' : data.live ? 'warn' : 'offline'} size={10} />
+            <span className="text-sm font-semibold">
+              {data.connected ? 'Trực tuyến' : data.live ? 'Mất kết nối' : 'Dữ liệu mẫu'}
+            </span>
+            {data.scenario !== 'NORMAL' && <Badge tone="danger">{data.scenario}</Badge>}
           </div>
 
           <div className="hidden flex-col leading-tight sm:flex">
             <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-soft)]">
               Cập nhật
             </span>
-            <span className="font-mono text-sm font-semibold">06:14:52</span>
+            <span className="font-mono text-sm font-semibold">
+              {data.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString('vi-VN') : '--:--:--'}
+            </span>
           </div>
 
+          {/* Điều khiển demo — bơm sự cố / ngắt cảm biến theo ý muốn lúc pitch,
+              thay vì ngồi chờ dữ liệu tự bất thường đúng lúc trình bày. */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleInjectDrought}
+              disabled={busy || !data.live}
+              className="rounded-lg border border-[var(--color-danger)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-danger)] transition-colors hover:bg-[var(--color-danger)] hover:text-white disabled:opacity-40"
+            >
+              Bơm sự cố hạn
+            </button>
+            <button
+              onClick={handleToggleSun}
+              disabled={busy || !data.live}
+              className="rounded-lg border border-[var(--color-line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--color-ink-soft)] transition-colors hover:bg-[var(--color-field)] disabled:opacity-40"
+            >
+              {devices.find((d) => d.id === 'SUN_01')?.status === 'offline'
+                ? 'Nối lại SUN_01'
+                : 'Ngắt SUN_01'}
+            </button>
+          </div>
         </div>
+
+        {(actionError || (!data.live && data.error)) && (
+          <div className="border-t border-[var(--color-line)] bg-[#fbe0e0] px-4 py-2 text-xs font-medium text-[#a72f2f] sm:px-6">
+            {actionError ?? `Không kết nối được backend (${data.error}). Đang hiển thị dữ liệu mẫu.`}
+          </div>
+        )}
       </header>
 
       {/* CONTENT */}
@@ -486,16 +562,39 @@ export default function App() {
               deviceId="SOIL_01"
               unit="%"
               color={METRIC_COLOR['Độ ẩm đất']}
-              series={soilMoistureTrend}
+              series={soilTrend}
             />
             <TrendChart
               title="Mực nước bồn chính"
               deviceId="TANK_01"
               unit="%"
               color={METRIC_COLOR['Mực nước']}
-              series={tankLevelTrend}
+              series={tankTrend}
             />
           </div>
+        </section>
+
+        {/* CHẨN ĐOÁN CỦA AI — hiện LÝ DO chứ không chỉ hiện cảnh báo.
+            Agent chỉ chạy khi model phát hiện bất thường, không chạy mọi gói tin. */}
+        <section className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-canvas)] p-5 shadow-sm sm:p-6">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h3 className="font-display text-lg font-bold tracking-tight">Chẩn đoán của AI</h3>
+            {data.insight && <AgentBadge agent="Farm Coordinator" label="Farm Coordinator Agent" />}
+          </div>
+
+          {data.veto && Date.now() - data.veto.at < 120_000 && (
+            <div className="mb-3 rounded-xl border-2 border-[#a72f2f] bg-[#fbe0e0] p-4">
+              <div className="font-display text-sm font-bold text-[#a72f2f]">
+                VETO — guardrail cứng đã chặn hành động
+              </div>
+              <div className="mt-1 text-[13px] text-[#a72f2f]">{data.veto.reason}</div>
+              <div className="mt-2 text-xs text-[#a72f2f]/80">
+                Lớp luật vật lý bằng Python thuần, LLM không có quyền phủ quyết.
+              </div>
+            </div>
+          )}
+
+          <AiPanel insight={data.insight} />
         </section>
 
         {/* VẬN HÀNH HÔM NAY — kế hoạch + nhiệm vụ + xác minh gộp 1 khối, chia bằng đường kẻ */}
@@ -513,7 +612,11 @@ export default function App() {
                       <AgentBadge agent="Irrigation Planning" label="Irrigation Planning Agent" />
                     </div>
                   </div>
-                  {planStatus === 'pending' && <Badge tone="danger">Ưu tiên cao</Badge>}
+                  {planStatus === 'pending' && (
+                    <Badge tone="danger">
+                      {plan ? `Ưu tiên ${plan.priority}` : 'Ưu tiên cao'}
+                    </Badge>
+                  )}
                   {planStatus === 'approved' && (
                     <Badge tone="ok">
                       <IconCheckCircle className="mr-1 h-3 w-3" />
@@ -529,50 +632,88 @@ export default function App() {
                 </div>
 
                 <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-                  <Field label="Khu vực" value="Khu A" />
-                  <Field label="Khung giờ" value="06:30 – 07:15" mono />
-                  <Field label="Lượng nước" value="1.200 L" mono />
+                  <Field label="Khu vực" value={plan ? `Khu ${plan.zone}` : 'Khu A'} />
+                  <Field label="Khung giờ" value={plan?.scheduled_time ?? '06:30 – 07:15'} mono />
+                  <Field
+                    label="Thời lượng"
+                    value={plan ? `${plan.duration_minutes} phút` : '45 phút'}
+                    mono
+                  />
                 </div>
+
+                {plan?.rationale && (
+                  <div className="mt-5">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
+                      Lý do
+                    </div>
+                    <p className="text-[13px] leading-relaxed">{plan.rationale}</p>
+                  </div>
+                )}
 
                 <div className="mt-5">
                   <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
                     Dữ liệu căn cứ
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {['SOIL_01', 'WEATHER_01', 'TANK_01', 'SUN_01', 'PUMP_01'].map((c) => (
-                      <span
-                        key={c}
-                        className="rounded-md bg-[var(--color-canvas)] px-2 py-1 font-mono text-xs font-semibold text-[var(--color-soil)]"
-                      >
-                        {c}
-                      </span>
-                    ))}
+                    {(plan?.used_devices ?? ['SOIL_01', 'WEATHER_01', 'TANK_01', 'SUN_01', 'PUMP_01']).map(
+                      (c) => {
+                        const reading = plan?.data_snapshot?.[c]
+                        const hero = reading
+                          ? Object.entries(reading).find(([k]) => k !== 'ts')
+                          : undefined
+                        return (
+                          <span
+                            key={c}
+                            className="rounded-md bg-[var(--color-canvas)] px-2 py-1 font-mono text-xs font-semibold text-[var(--color-soil)]"
+                            title={hero ? `${hero[0]} = ${hero[1]} lúc lập kế hoạch` : undefined}
+                          >
+                            {c}
+                            {hero && (
+                              <span className="ml-1 font-normal text-[var(--color-ink-soft)]">
+                                {Math.round(Number(hero[1]) * 10) / 10}
+                              </span>
+                            )}
+                          </span>
+                        )
+                      },
+                    )}
                   </div>
                 </div>
 
-                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                {plan && !plan.guardrail_check.allowed && (
+                  <div className="mt-4 rounded-lg bg-[#fbe0e0] px-3 py-2 text-[13px] font-medium text-[#a72f2f]">
+                    {plan.guardrail_check.reason}
+                  </div>
+                )}
+
+                <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+                  {!plan && data.live && (
+                    <span className="mr-auto text-[13px] font-medium text-[var(--color-ink-soft)]">
+                      Chưa có kế hoạch nào — Agent sẽ tự lập khi phát hiện đất thiếu nước.
+                    </span>
+                  )}
                   {planStatus === 'pending' ? (
                     <>
                       <button
                         onClick={handleReject}
-                        className="rounded-xl border border-[var(--color-danger)] bg-white px-5 py-2.5 text-sm font-semibold text-[var(--color-danger)] shadow-sm transition-colors hover:bg-[var(--color-danger)] hover:text-white"
+                        disabled={busy || !plan}
+                        className="rounded-xl border border-[var(--color-danger)] bg-white px-5 py-2.5 text-sm font-semibold text-[var(--color-danger)] shadow-sm transition-colors hover:bg-[var(--color-danger)] hover:text-white disabled:opacity-40"
                       >
                         Từ chối
                       </button>
                       <button
                         onClick={handleApprove}
-                        className="rounded-xl border border-[var(--color-leaf-deep)] bg-[var(--color-leaf)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--color-leaf-deep)]"
+                        disabled={busy || !plan}
+                        className="rounded-xl border border-[var(--color-leaf-deep)] bg-[var(--color-leaf)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--color-leaf-deep)] disabled:opacity-40"
                       >
                         Phê duyệt
                       </button>
                     </>
                   ) : (
-                    <button
-                      onClick={handleResetDemo}
-                      className="rounded-xl border border-[var(--color-line)] bg-[var(--color-canvas)] px-5 py-2.5 text-sm font-semibold text-[var(--color-ink-soft)] transition-colors hover:bg-[var(--color-field)]"
-                    >
-                      Đặt lại (demo)
-                    </button>
+                    <span className="font-mono text-xs font-semibold text-[var(--color-ink-soft)]">
+                      {plan?.plan_id}
+                      {plan?.approved_by && ` · ${plan.approved_by}`}
+                    </span>
                   )}
                 </div>
               </div>
@@ -594,7 +735,7 @@ export default function App() {
                         const StatusIcon = STATUS_ICON[t.status]
                         return (
                           <tr
-                            key={t.name}
+                            key={t.id ?? t.name}
                             className="border-t border-[var(--color-line)] transition-colors hover:bg-[var(--color-field)]"
                           >
                             <td className="py-3 pr-3 text-sm font-semibold">{t.name}</td>

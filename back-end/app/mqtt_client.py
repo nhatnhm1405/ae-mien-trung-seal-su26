@@ -60,13 +60,19 @@ def dispatch_reading(device_code: str, metrics: dict, event_time: float | None =
                      meta: dict | None = None) -> bool:
     """Đẩy 1 bản ghi vào handler đang gắn. Dùng chung cho MQTT thật/simulator/inject.
 
-    Thiết bị đang bị freeze thì bản ghi bị chặn TẠI ĐÂY, không phải chỉ trong vòng
-    lặp simulator — nếu không, ở chế độ MQTT thật (lúc thi) message kế tiếp của
-    broker sẽ hồi sinh thiết bị sau ~1 giây và Kịch bản 3 "cảm biến mất kết nối"
-    không demo được.
+    Freeze và pin được xử lý TẠI ĐÂY chứ không chỉ trong vòng lặp simulator. Ở
+    chế độ MQTT thật, broker bắn ~1 message/giây, nên nếu chỉ chặn ở simulator thì:
+      - freeze: thiết bị hồi sinh ngay message kế tiếp -> không demo được Kịch bản 3
+      - inject: giá trị bất thường vừa bơm bị ghi đè trước khi Agent (mất 1-3s) kịp
+        đọc, và guardrail cũng đọc phải giá trị thật -> nút "Bơm sự cố" lúc pitch
+        kích hoạt được cảnh báo nhưng mọi thứ đọc state sau đó lại thấy số bình thường.
     """
-    if device_code in _frozen and (meta or {}).get("source") != "inject":
-        return True  # coi như đã nhận nhưng cố ý bỏ qua — giữ stale thật sự
+    source = (meta or {}).get("source")
+    if source != "inject":
+        if device_code in _frozen:
+            return True  # coi như đã nhận nhưng cố ý bỏ qua — giữ stale thật sự
+        if _pinned_until.get(device_code, 0) > time.time():
+            return True  # đang giữ giá trị demo, chưa cho dữ liệu mới đè lên
     return _reading_handler(device_code, metrics, event_time, meta or {})
 
 

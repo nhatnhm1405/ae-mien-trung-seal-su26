@@ -15,7 +15,13 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from app.config import DEVICES, BUFFER_MAXLEN, STALE_THRESHOLD_SECONDS, SLIDING_WINDOW_SECONDS
+from app.config import (
+    DEVICES,
+    BUFFER_MAXLEN,
+    STALE_THRESHOLD_SECONDS,
+    SLIDING_WINDOW_SECONDS,
+    TRACK_B_DEVICES,
+)
 
 
 class DeviceState:
@@ -137,7 +143,19 @@ class FarmState:
         return [c for c, d in self.devices.items() if d.latest is not None and not d.is_stale]
 
     def stale_devices(self) -> list[str]:
-        return [c for c, d in self.devices.items() if d.is_stale]
+        """Thiết bị Track B đang mất dữ liệu — đây là danh sách kích hoạt Kịch bản 3.
+
+        CHỈ tính 6 thiết bị Track B. Danh mục còn chứa thiết bị phụ của BTC (AC_01)
+        mà broker không hề phát trên topic nông nghiệp, nên nó stale vĩnh viễn; để
+        nó vào đây thì mỗi lần Agent chạy lại đẻ thêm một phiếu "kiểm tra kết nối
+        AC_01", ngập bảng nhiệm vụ bằng sự cố không có thật. Vẫn giữ AC_01 trong
+        DEVICES để nếu BTC có phát thì dữ liệu không bị loại.
+        """
+        return [c for c, d in self.devices.items() if d.is_stale and c in TRACK_B_DEVICES]
+
+    def auxiliary_devices(self) -> list[str]:
+        """Thiết bị ngoài 6 thiết bị Track B — theo dõi nhưng không báo sự cố."""
+        return [c for c in self.devices if c not in TRACK_B_DEVICES]
 
     def summary(self, scenario: str = "NORMAL") -> dict:
         """Tóm tắt gọn toàn nông trại: chỉ số mới nhất + danh sách active/stale.
