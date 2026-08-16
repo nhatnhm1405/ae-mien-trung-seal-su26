@@ -1,37 +1,44 @@
-project-root/
-├── backend/
-│   ├── main.py                 ← FastAPI app, khởi động WebSocket, entrypoint chạy backend
-│   ├── mqtt_client.py          ← Data/Backend: subscribe MQTT, nhận data thô
-│   ├── buffer.py               ← Data/Backend: deque + pandas.rolling(), tính mean/std/slope
-│   ├── ml/
-│   │   ├── train_model.py      ← AI/ML: script chạy 1 lần, train xong lưu file .pkl
-│   │   ├── detector.py         ← AI/ML: load model, hàm predict(data) -> anomaly_score
-│   │   └── model_checkpoint.pkl ← file model đã train (KHÔNG commit lúc đang thi thật, chỉ để local)
-│   ├── agents/
-│   │   ├── llm_client.py       ← LLM+Pitch: hàm call_agent() dùng chung, gọi DeepSeek API
-│   │   ├── diagnosis_agent.py  ← LLM+Pitch: prompt + logic agent 1
-│   │   ├── action_agent.py     ← LLM+Pitch: prompt + logic agent 2 (function calling)
-│   │   ├── rootcause_agent.py  ← LLM+Pitch: prompt + logic agent 3
-│   │   └── guardrail.py        ← LLM+Pitch: hàm if-else cứng, check trước khi thực thi
-│   ├── websocket.py            ← Data/Backend: đẩy data + alert ra frontend
-│   └── requirements.txt
+back-end/  — MOT process duy nhat, chay bang: uvicorn app.main:app --port 8000
 │
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx              ← Frontend: layout chính
-│   │   ├── components/
-│   │   │   ├── Chart.jsx        ← Frontend: biểu đồ realtime
-│   │   │   ├── AlertList.jsx    ← Frontend: danh sách cảnh báo + giải thích AI
-│   │   │   └── InjectButton.jsx ← Frontend: nút bơm anomaly giả để demo
-│   │   ├── mock/
-│   │   │   └── sampleData.js    ← Frontend: data giả dùng lúc backend chưa xong
-│   │   └── websocket.js         ← Frontend: kết nối WebSocket tới backend
-│   └── package.json
+├── app/
+│   ├── config.py        ← NGUON SU THAT DUY NHAT: MQTT host/topic/credential (doc tu .env),
+│   │                       danh muc DEVICES + don vi, tham so windowing, GUARDRAILS,
+│   │                       cooldown cho tang LLM. Sua MQTT o day, khong sua cho khac.
+│   ├── state.py         ← farm_state: hot storage trong RAM (deque/thiet bi) + pandas.rolling
+│   │                       (mean/std/slope 300s) + plans/tasks/notifications. Mot kho duy nhat.
+│   ├── mqtt_client.py   ← Ingest: ket noi broker BTC (wss:443) HOAC simulator noi bo.
+│   │                       Moi ban ghi — that, gia lap, hay bom tay — deu di qua
+│   │                       dispatch_reading() roi toi pipeline.on_reading().
+│   ├── pipeline.py      ← MAT XICH NOI: ingest -> ML (moi diem) -> neu bat thuong thi
+│   │                       -> Agent (co cooldown, chay thread rieng) -> broadcast.
+│   ├── ml/              ← AI/ML: anomaly_model (EllipticEnvelope/thiet bi),
+│   │                       irrigation_model (GradientBoosting -> time_to_dry),
+│   │                       train_*.py, live_train.py (refit dinh ky), collect_real_data.py
+│   ├── agents/          ← LLM: coordinator (function calling), field_iot,
+│   │                       irrigation_resource (z-score + guardrail), llm_client (DeepSeek)
+│   ├── tools.py         ← Tool/API cho Agent goi: tao/duyet/tu choi ke hoach tuoi, tao phieu
+│   │                       kiem tra, thong bao, bao cao. CO guardrail cung chan truoc.
+│   ├── services.py      ← ResourceService (ngan sach nuoc) + VerificationService (chung cu
+│   │                       xac minh post-action)
+│   ├── events.py        ← WebSocket manager + envelope {type, ts, payload} + cau noi
+│   │                       thread MQTT -> asyncio loop
+│   └── main.py          ← FastAPI: toan bo REST + /ws/telemetry. Xem /docs de biet endpoint.
 │
-├── docs/
-│   ├── SOP.md                   ← LLM+Pitch: file SOP dạng markdown, nhét vào prompt agent
-│   └── causal_map.py            ← LLM+Pitch: dict quan hệ nhân quả cho root-cause agent
-│
-├── .env.example                 ← chứa placeholder API key (KHÔNG commit key thật)
-├── .gitignore                   ← ignore .env, model_checkpoint.pkl (nếu file quá nặng), node_modules
-└── README.md
+├── simulator.py         ← Cong cu dev: phat payload dung format BTC (--mode buffer | mqtt)
+├── requirements.txt
+├── .env                 ← credential that (bi .gitignore chan, KHONG commit)
+└── .env.example
+
+CHAY:
+    cd back-end
+    pip install -r requirements.txt
+    python -m app.ml.train_anomaly_model      # bat buoc lan dau, neu khong se khong phat hien duoc gi
+    python -m app.ml.train_irrigation_model
+
+    uvicorn app.main:app --port 8000                    # dev, dung du lieu gia lap
+    SIMULATE=false uvicorn app.main:app --port 8000     # thi that, ket noi broker BTC
+
+BIEN MOI TRUONG DIEU KHIEN LUC CHAY:
+    SIMULATE=false          -> dung broker that thay vi simulator
+    AGENT_ON_ANOMALY=false  -> tat tang LLM (van co anomaly detection) khi het quota/mat mang
+    AGENT_COOLDOWN_SECONDS  -> giay toi thieu giua 2 lan goi LLM cho CUNG mot thiet bi (mac dinh 60)

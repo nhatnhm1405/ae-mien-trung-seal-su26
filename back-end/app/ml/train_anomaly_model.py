@@ -33,7 +33,7 @@ import pandas as pd
 from sklearn.covariance import EllipticEnvelope
 
 from app.config import DEVICES
-from app.ml.generate_normal_operating_data import sample_normal
+from app.ml.generate_normal_operating_data import NORMAL_PARAMS, sample_normal
 
 MODEL_DIR = Path(__file__).parent
 # Da quet 0.005/0.01/0.02/0.03 tren du lieu that: moi muc deu bat injection cuc
@@ -68,7 +68,18 @@ def _fit_and_save(code: str, metrics: list[str], df: pd.DataFrame, n_desc: str) 
 
 
 def train_all(n_samples: int = N_SAMPLES) -> None:
+    """Train tren du lieu tong hop cho moi thiet bi CO tham so phan phoi binh thuong.
+
+    Khong lay thang DEVICES: danh muc thiet bi con chua ca thiet bi cua BTC ngoai
+    6 thiet bi Track B (VD AC_01) — chung khong co trong NORMAL_PARAMS nen se
+    KeyError giua chung. Thieu model chi lam mat tang phat hien cho rieng thiet bi
+    do (pipeline da fail-soft), khong duoc lam hong ca lenh train.
+    """
     for code, spec in DEVICES.items():
+        if code not in NORMAL_PARAMS:
+            print(f"{code}: bo qua — chua co tham so van hanh binh thuong trong "
+                  f"generate_normal_operating_data.NORMAL_PARAMS")
+            continue
         df = sample_normal(code, n_samples)
         _fit_and_save(code, spec.metrics, df, "synthetic")
 

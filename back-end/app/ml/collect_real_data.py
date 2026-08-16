@@ -6,18 +6,15 @@ KHONG dung script nay cho production pipeline — do la viec cua
 app/mqtt_client.py (Backend, da co san farm_state.ingest()). Script nay
 chi doc + ghi log CSV rieng, khong dung chung state voi backend.
 
-Doc credentials tu bien moi truong (khong hardcode secret vao code):
-    MQTT_HOST, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD, MQTT_TOPIC
-    MQTT_TRANSPORT (tcp|websockets — mac dinh: websockets neu PORT=443)
-    MQTT_WS_PATH   (mac dinh: /mqtt — thu lai voi gia tri khac neu khong connect duoc)
+Cau hinh doc tu app/config.py (tuc tu back-end/.env) — cung mot nguon voi
+backend, khong con bo bien rieng cho script nay:
+    MQTT_BROKER_HOST / MQTT_BROKER, MQTT_BROKER_PORT / MQTT_PORT,
+    MQTT_USERNAME, MQTT_PASSWORD, MQTT_TOPIC_TEST,
+    MQTT_TRANSPORT (tcp|websockets — mac dinh: websockets neu port=443)
+    MQTT_WS_PATH   (mac dinh: /mqtt)
 
-Vi du chay (PowerShell):
-    $env:MQTT_HOST="mqtt-hackathon.lexatek.vn"
-    $env:MQTT_PORT="443"
-    $env:MQTT_USERNAME="AE_MIEN_TRUNG"
-    $env:MQTT_PASSWORD="<dien that, KHONG commit>"
-    $env:MQTT_TOPIC="hackathon/ae_mien_trung/test/telemetry"
-    cd llm-test
+Vi du chay:
+    cd back-end
     python -m app.ml.collect_real_data
 
 Neu ket noi that bai voi transport=websockets, thu:
@@ -52,13 +49,19 @@ from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
-HOST = os.environ.get("MQTT_HOST", "mqtt-hackathon.lexatek.vn")
-PORT = int(os.environ.get("MQTT_PORT", "443"))
-USERNAME = os.environ.get("MQTT_USERNAME", "AE_MIEN_TRUNG")
-PASSWORD = os.environ.get("MQTT_PASSWORD")
-TOPIC = os.environ.get("MQTT_TOPIC", "hackathon/ae_mien_trung/test/telemetry")
-TRANSPORT = os.environ.get("MQTT_TRANSPORT", "websockets" if PORT == 443 else "tcp")
-WS_PATH = os.environ.get("MQTT_WS_PATH", "/mqtt")
+# Doc tu app.config — KHONG tu dat default host/credential o day. Truoc khi hop
+# nhat, file nay dung bo ten bien rieng (MQTT_HOST) va hardcode san host cua BTC,
+# nghia la sua .env cho backend xong thi script ML van tro vao cho khac.
+from app.config import (
+    MQTT_BROKER_HOST as HOST,
+    MQTT_BROKER_PORT as PORT,
+    MQTT_PASSWORD as PASSWORD,
+    MQTT_TOPIC_TEST as TOPIC,
+    MQTT_TRANSPORT as TRANSPORT,
+    MQTT_USERNAME as USERNAME,
+    MQTT_WS_PATH as WS_PATH,
+)
+
 MAX_SECONDS = float(os.environ.get("MQTT_MAX_SECONDS", "0"))  # 0 = chay vo han (loop_forever)
 
 OUT_PATH = Path(__file__).parent / "real_telemetry_log.csv"

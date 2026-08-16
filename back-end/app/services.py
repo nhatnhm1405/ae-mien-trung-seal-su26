@@ -1,92 +1,28 @@
 """
 services.py — Business Domain Services cho Track B (Smart Agriculture).
 
-Bao gôm:
-  1. IrrigationService: Quản lý kế hoạch tưới, duyệt kế hoạch (Approval workflow) & thực thi.
-  2. ResourceService: Quản lý mực nước bồn, tính dung tích nước khả dụng, giới hạn an toàn & nhân sự.
-  3. VerificationService: Xác minh hành động post-action kèm chứng cứ telemetry real-time.
+Gồm:
+  1. ResourceService: tính dung tích bồn nước khả dụng, ngưỡng an toàn, nhân sự.
+  2. VerificationService: xác minh hành động post-action kèm chứng cứ telemetry.
+
+GHI CHÚ HỢP NHẤT — trước đây file này còn có `IrrigationService` quản lý kế hoạch
+tưới bằng dict riêng. Nó đã bị bỏ vì trùng chức năng với `app/tools.py`
+(create_irrigation_plan / approve_plan) trong khi bản ở tools.py mạnh hơn: có
+guardrail cứng chặn trước, có ghi lại data_snapshot đã dùng để ra quyết định, và
+lưu vào cùng `farm_state.plans` mà Agent đang đọc. Giữ cả hai nghĩa là kế hoạch
+tạo qua REST và kế hoạch tạo qua Agent nằm ở hai kho khác nhau — đúng loại lỗi
+"hai nguồn sự thật" mà lần hợp nhất này dọn.
 """
-import time
+
 import logging
-from typing import Dict, Any, List, Optional
+import time
+from typing import Any, Dict, List
 
-logger = logging.getLogger("DomainServices")
-
-# ══════════════════════════════════════════════════════
-# 1. Irrigation Service (Kế hoạch tưới & Phê duyệt)
-# ══════════════════════════════════════════════════════
-
-class IrrigationService:
-    """Quản lý kế hoạch tưới tiêu khu vực nông nghiệp (Track B)."""
-
-    def __init__(self):
-        self._plans: Dict[str, Dict[str, Any]] = {}
-
-    def create_plan(
-        self,
-        zone: str = "ZONE_A",
-        target_moisture: float = 45.0,
-        duration_minutes: int = 20,
-        priority: str = "HIGH",
-        created_by: str = "Irrigation Planning Agent",
-        reason: str = "Độ ẩm đất thấp dưới ngưỡng an toàn",
-        water_estimated_liters: float = 300.0,
-    ) -> Dict[str, Any]:
-        plan_id = f"PLAN_{int(time.time() * 1000)}"
-        plan = {
-            "plan_id": plan_id,
-            "zone": zone.upper(),
-            "target_moisture": target_moisture,
-            "duration_minutes": duration_minutes,
-            "priority": priority.upper(),
-            "created_by": created_by,
-            "reason": reason,
-            "water_estimated_liters": water_estimated_liters,
-            "status": "PENDING_APPROVAL",  # PENDING_APPROVAL -> APPROVED -> EXECUTING -> COMPLETED / REJECTED
-            "created_at": time.time(),
-            "approved_at": None,
-            "approved_by": None,
-            "executed_at": None,
-            "completion_proof": None,
-        }
-        self._plans[plan_id] = plan
-        logger.info(f"🌾 Created Irrigation Plan {plan_id} for {zone}")
-        return plan
-
-    def approve_plan(self, plan_id: str, approved_by: str = "Người quản lý nông trại", notes: str = "") -> Optional[Dict[str, Any]]:
-        if plan_id not in self._plans:
-            return None
-        plan = self._plans[plan_id]
-        plan["status"] = "APPROVED"
-        plan["approved_at"] = time.time()
-        plan["approved_by"] = approved_by
-        plan["approval_notes"] = notes
-        logger.info(f"✅ Approved Irrigation Plan {plan_id} by {approved_by}")
-        return plan
-
-    def reject_plan(self, plan_id: str, rejected_by: str = "Người quản lý nông trại", reason: str = "") -> Optional[Dict[str, Any]]:
-        if plan_id not in self._plans:
-            return None
-        plan = self._plans[plan_id]
-        plan["status"] = "REJECTED"
-        plan["rejected_at"] = time.time()
-        plan["rejected_by"] = rejected_by
-        plan["rejection_reason"] = reason
-        logger.info(f"❌ Rejected Irrigation Plan {plan_id}")
-        return plan
-
-    def list_plans(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        plans = list(self._plans.values())
-        if status:
-            plans = [p for p in plans if p["status"].upper() == status.upper()]
-        return sorted(plans, key=lambda x: x["created_at"], reverse=True)
-
-    def get_plan(self, plan_id: str) -> Optional[Dict[str, Any]]:
-        return self._plans.get(plan_id)
+logger = logging.getLogger("services")
 
 
 # ══════════════════════════════════════════════════════
-# 2. Resource Service (Quản lý bồn nước & nhân sự)
+# 1. Resource Service (Quản lý bồn nước & nhân sự)
 # ══════════════════════════════════════════════════════
 
 class ResourceService:
@@ -101,7 +37,7 @@ class ResourceService:
         usable_volume = max(0.0, current_volume - safety_volume)
 
         is_critical = tank_level_percent < self.SAFETY_RESERVE_PERCENT
-        estimated_hours_remaining = (usable_volume / (flow_rate_lmin * 60.0)) if flow_rate_lmin > 0 else 999.0
+        estimated_hours_remaining = (usable_volume / (flow_rate_lmin * 60.0)) if flow_rate_lmin > 0 else None
 
         return {
             "tank_level_percent": round(tank_level_percent, 1),
@@ -112,11 +48,13 @@ class ResourceService:
             "is_sufficient": usable_volume > 200.0,
             "is_critical": is_critical,
             "flow_rate_lmin": round(flow_rate_lmin, 1),
-            "estimated_hours_remaining": round(estimated_hours_remaining, 2) if flow_rate_lmin > 0 else None,
+            "estimated_hours_remaining": (
+                round(estimated_hours_remaining, 2) if estimated_hours_remaining is not None else None
+            ),
             "recommendation": (
                 "Bồn nước cạn dưới ngưỡng an toàn (15%)! Cần dừng tưới khẩn cấp và cấp bổ sung nước."
                 if is_critical else "Nguồn nước đảm bảo cho hoạt động tưới khu A."
-            )
+            ),
         }
 
     def get_field_staff(self) -> List[Dict[str, Any]]:
@@ -128,7 +66,7 @@ class ResourceService:
 
 
 # ══════════════════════════════════════════════════════
-# 3. Verification Service (Xác minh sau hành động)
+# 2. Verification Service (Xác minh sau hành động)
 # ══════════════════════════════════════════════════════
 
 class VerificationService:
@@ -140,13 +78,14 @@ class VerificationService:
         action_type: str,
         telemetry_snapshot: Dict[str, Any],
         verified_by: str = "Verification Agent",
-        notes: str = ""
+        notes: str = "",
     ) -> Dict[str, Any]:
         now = time.time()
         active_devs = telemetry_snapshot.get("active_devices", [])
         stale_devs = telemetry_snapshot.get("stale_devices", [])
         scenario = telemetry_snapshot.get("scenario", "NORMAL")
 
+        # Điều kiện chấp nhận của đề: tối thiểu 4/6 thiết bị có dữ liệu.
         confidence_score = 1.0 if len(active_devs) >= 4 else 0.7
 
         proof = {
@@ -166,14 +105,13 @@ class VerificationService:
                 "stale_devices": stale_devs,
                 "snapshot_timestamp": telemetry_snapshot.get("timestamp"),
             },
-            "notes": notes or f"Xác minh thành công dựa trên dữ liệu telemetry thực tế từ 6 cảm biến BTC.",
+            "notes": notes or "Xác minh dựa trên dữ liệu telemetry thực tế đang chảy từ broker.",
         }
 
-        logger.info(f"🔍 Generated Verification Proof {proof['verification_id']} for {action_id}")
+        logger.info("Đã tạo Verification Proof %s cho %s", proof["verification_id"], action_id)
         return proof
 
 
 # Singleton instances
-irrigation_service = IrrigationService()
 resource_service = ResourceService()
 verification_service = VerificationService()

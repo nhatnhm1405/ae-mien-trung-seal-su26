@@ -122,6 +122,19 @@ def approve_plan(plan_id: str, approved_by: str = "manager") -> dict:
     return plan
 
 
+def reject_plan(plan_id: str, rejected_by: str = "manager", reason: str = "") -> dict:
+    """Nửa còn lại của Human-in-the-loop: từ chối kế hoạch. Có nút Approve mà
+    không có nút Reject thì không gọi là "phê duyệt", chỉ là xác nhận."""
+    plan = farm_state.plans.get(plan_id)
+    if not plan:
+        raise ValueError(f"Không tìm thấy plan {plan_id}")
+    plan["status"] = "rejected"
+    plan["rejected_by"] = rejected_by
+    plan["rejection_reason"] = reason
+    plan["rejected_at"] = _now_iso()
+    return plan
+
+
 # ---------------------------------------------------------------------------
 # Tool 2: Tạo nhiệm vụ kiểm tra hiện trường (Kịch bản 2 & 3)
 # ---------------------------------------------------------------------------

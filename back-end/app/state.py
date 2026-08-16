@@ -139,6 +139,36 @@ class FarmState:
     def stale_devices(self) -> list[str]:
         return [c for c, d in self.devices.items() if d.is_stale]
 
+    def summary(self, scenario: str = "NORMAL") -> dict:
+        """Tóm tắt gọn toàn nông trại: chỉ số mới nhất + danh sách active/stale.
+
+        Thay cho `DeviceBuffer.get_farm_snapshot()` của backend cũ — cùng shape
+        ({timestamp, scenario, devices, active_devices, stale_devices}) để các
+        route và VerificationService đã viết theo shape đó không phải sửa, nhưng
+        đọc từ farm_state nên chỉ còn MỘT kho dữ liệu duy nhất.
+
+        Nhẹ hơn snapshot() vì không tính rolling stats (snapshot() chạy pandas
+        rolling cho từng metric của từng thiết bị — không nên gọi trong vòng lặp).
+        """
+        devices = {}
+        for code, dev in self.devices.items():
+            spec = DEVICES[code]
+            devices[code] = {
+                "device_code": code,
+                "name": spec.name,
+                "units": spec.units,
+                "metrics": {k: v for k, v in (dev.latest or {}).items() if k != "ts"},
+                "is_stale": dev.is_stale,
+                "last_seen_ts": dev.last_seen_ts,
+            }
+        return {
+            "timestamp": time.time(),
+            "scenario": scenario,
+            "devices": devices,
+            "active_devices": self.readable_devices(),
+            "stale_devices": self.stale_devices(),
+        }
+
 
 # instance dùng chung toàn app (import cái này ở nơi khác)
 farm_state = FarmState()

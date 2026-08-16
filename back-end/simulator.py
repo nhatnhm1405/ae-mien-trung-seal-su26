@@ -115,8 +115,8 @@ class BTCFarmSimulator:
 
 
 def run_buffer_mode(duration: int = 300, interval: float = 2.0):
-    """Luu truc tiep vao buffer & websocket."""
-    from main import on_mqtt_telemetry
+    """Bom thang vao pipeline (state -> ML -> Agent), khong qua broker."""
+    from app.pipeline import on_reading
 
     sim = BTCFarmSimulator(scenario="normal")
     print("=" * 60)
@@ -130,16 +130,14 @@ def run_buffer_mode(duration: int = 300, interval: float = 2.0):
             payload = sim.generate_btc_payload()
             msg_count += 1
 
-            epoch = payload["epoch"]
+            epoch = float(payload["epoch"])
             for dev in payload["devices"]:
-                telemetry = {
-                    "device_code": dev["deviceCode"].upper(),
-                    "timestamp": float(epoch),
-                    "status": dev.get("status", "ok"),
-                    "metrics": dev.get("metrics", {}),
-                    "raw_topic": "hackathon/ae_mien_trung/test/telemetry"
-                }
-                on_mqtt_telemetry(telemetry)
+                on_reading(
+                    dev["deviceCode"].upper(),
+                    dev.get("metrics", {}),
+                    event_time=epoch,
+                    meta={"source": "simulator.py", "scenario": payload.get("scenario", "NORMAL")},
+                )
 
             print(f"  [{int(time.time() - start):>3d}s] Emitted BTC Payload #{msg_count} with {len(payload['devices'])} devices")
             time.sleep(interval)
@@ -150,13 +148,31 @@ def run_buffer_mode(duration: int = 300, interval: float = 2.0):
 def run_mqtt_mode(duration: int = 300, interval: float = 2.0):
     """Publish goi tin BTC qua MQTT Broker thuc te."""
     import paho.mqtt.client as mqtt
-    import os
 
-    broker = os.getenv("MQTT_BROKER", "broker.hivemq.com")
-    port = int(os.getenv("MQTT_PORT", 1883))
-    topic = os.getenv("MQTT_TOPIC_TEST", "hackathon/ae_mien_trung/test/telemetry")
+    # Doc cung mot nguon cau hinh voi backend — khong tu dat default broker rieng,
+    # neu khong se publish len mot broker khac voi cai backend dang subscribe.
+    from app.config import (
+        MQTT_BROKER_HOST as broker,
+        MQTT_BROKER_PORT as port,
+        MQTT_PASSWORD,
+        MQTT_TOPIC_TEST as topic,
+        MQTT_TRANSPORT,
+        MQTT_USE_TLS,
+        MQTT_USERNAME,
+        MQTT_WS_PATH,
+    )
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"Publisher_{int(time.time())}")
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2,
+        client_id=f"Publisher_{int(time.time())}",
+        transport=MQTT_TRANSPORT,
+    )
+    if MQTT_TRANSPORT == "websockets" and MQTT_WS_PATH:
+        client.ws_set_options(path=MQTT_WS_PATH)
+    if MQTT_USE_TLS:
+        client.tls_set()
+    if MQTT_USERNAME:
+        client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     client.connect(broker, port, keepalive=60)
     client.loop_start()
 
