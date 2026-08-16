@@ -1,0 +1,631 @@
+import { useState } from 'react'
+
+type Status = 'ok' | 'warn' | 'danger' | 'offline'
+
+const STATUS_COLOR: Record<Status, string> = {
+  ok: 'var(--color-ok)',
+  warn: 'var(--color-warn)',
+  danger: 'var(--color-danger)',
+  offline: 'var(--color-offline)',
+}
+
+function Dot({ status, size = 8 }: { status: Status; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 8 8"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <circle cx="4" cy="4" r="4" fill={STATUS_COLOR[status]} />
+    </svg>
+  )
+}
+
+// ---- Icons (inline SVG, single-stroke, currentColor) ---------------------
+
+type IconProps = { className?: string }
+const iconBase = 'shrink-0'
+
+function IconDroplet({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="#0EA5E9" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <path d="M10 2.5S5 8.7 5 12.5a5 5 0 0 0 10 0C15 8.7 10 2.5 10 2.5Z" fill="#BAE6FD" fillOpacity="0.6" />
+    </svg>
+  )
+}
+
+function IconThermometer({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="#F97316" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <path d="M8.7 11.6V4.3a1.3 1.3 0 1 1 2.6 0v7.3a3.3 3.3 0 1 1-2.6 0Z" fill="#FED7AA" fillOpacity="0.6" />
+    </svg>
+  )
+}
+
+function IconCloud({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="#38BDF8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <path d="M6.3 15h7a3 3 0 0 0 .3-6 4.5 4.5 0 0 0-8.6-1.2A3.2 3.2 0 0 0 6.3 15Z" fill="#E0F2FE" fillOpacity="0.6" />
+    </svg>
+  )
+}
+
+function IconWaves({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="#06B6D4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <path d="M2.5 8.2c1.3-1.6 2.9-1.6 4.2 0s2.9 1.6 4.2 0 2.9-1.6 4.2 0 2.9-1.6 4.2 0" />
+      <path d="M2.5 13c1.3-1.6 2.9-1.6 4.2 0s2.9 1.6 4.2 0 2.9-1.6 4.2 0 2.9-1.6 4.2 0" />
+    </svg>
+  )
+}
+
+function IconBolt({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="#F59E0B" className={`${iconBase} ${className}`} aria-hidden="true">
+      <path d="M11 2 4.5 11.5H9l-.6 6.5 6.6-9.5H10.6L11 2Z" />
+    </svg>
+  )
+}
+
+function IconFlask({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="#8B5CF6" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <path d="M8 2.5h4M8.7 2.5v4.9l-3.9 6.9a2 2 0 0 0 1.7 3h6.9a2 2 0 0 0 1.7-3l-3.9-6.9V2.5" fill="#EDE9FE" fillOpacity="0.6" />
+    </svg>
+  )
+}
+
+function IconTank({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="#3B82F6" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <ellipse cx="10" cy="5" rx="6" ry="2" fill="#DBEAFE" fillOpacity="0.6" />
+      <path d="M4 5v9a6 2 0 0 0 12 0V5" fill="#DBEAFE" fillOpacity="0.4" />
+    </svg>
+  )
+}
+
+function IconSun({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="#F59E0B" strokeWidth="1.6" strokeLinecap="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <circle cx="10" cy="10" r="3.3" fill="#FBBF24" stroke="none" />
+      <path d="M10 2.7v2M10 15.3v2M2.7 10h2M15.3 10h2M4.8 4.8l1.4 1.4M13.8 13.8l1.4 1.4M15.2 4.8l-1.4 1.4M6.2 13.8l-1.4 1.4" />
+    </svg>
+  )
+}
+
+function IconCheckCircle({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <circle cx="10" cy="10" r="7.3" />
+      <path d="M6.8 10.2l2.1 2.1 4.2-4.6" />
+    </svg>
+  )
+}
+
+function IconXCircle({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <circle cx="10" cy="10" r="7.3" />
+      <path d="M7.5 7.5l5 5M12.5 7.5l-5 5" />
+    </svg>
+  )
+}
+
+function IconClock({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <circle cx="10" cy="10" r="7.3" />
+      <path d="M10 5.8V10l2.8 1.8" />
+    </svg>
+  )
+}
+
+function IconLoader({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className={`${iconBase} ${className}`} aria-hidden="true">
+      <path d="M16 10a6 6 0 1 1-1.8-4.3" />
+      <path d="M16 4.5v3.7h-3.7" />
+    </svg>
+  )
+}
+
+// Metric label → icon, keyed by the exact label text used in device data.
+const METRIC_ICON: Record<string, (props: IconProps) => React.JSX.Element> = {
+  'Độ ẩm đất': IconDroplet,
+  'Độ ẩm': IconCloud,
+  'Nhiệt độ': IconThermometer,
+  'Lưu lượng': IconWaves,
+  'Công suất': IconBolt,
+  'Độ pH': IconFlask,
+  'Mực nước': IconTank,
+  'Cường độ sáng': IconSun,
+}
+
+const STATUS_ICON: Record<'Chờ' | 'Đang xử lý' | 'Hoàn tất', (props: IconProps) => React.JSX.Element> = {
+  'Chờ': IconClock,
+  'Đang xử lý': IconLoader,
+  'Hoàn tất': IconCheckCircle,
+}
+
+function Badge({
+  children,
+  tone = 'neutral',
+}: {
+  children: React.ReactNode
+  tone?: 'neutral' | 'ok' | 'warn' | 'danger' | 'offline' | 'leaf' | 'soil'
+}) {
+  const tones: Record<string, string> = {
+    neutral: 'bg-[var(--color-soil-soft)] text-[var(--color-soil)]',
+    ok: 'bg-[var(--color-leaf-soft)] text-[var(--color-leaf-deep)]',
+    warn: 'bg-[#fbf1d6] text-[#946a06]',
+    danger: 'bg-[#fbe0e0] text-[#a72f2f]',
+    offline: 'bg-[#ececea] text-[#6d7268]',
+    leaf: 'bg-[var(--color-leaf)] text-white',
+    soil: 'bg-[var(--color-soil)] text-white',
+  }
+  return (
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-bold tracking-tight ${tones[tone]}`}
+    >
+      {children}
+    </span>
+  )
+}
+
+// Mỗi agent một màu riêng để dễ phân biệt trong bảng nhiệm vụ / kế hoạch.
+const AGENT_COLOR: Record<string, string> = {
+  'Field IoT': 'bg-[#dbeafe] text-[#1d4ed8]',
+  'Irrigation Planning': 'bg-[#cffafe] text-[#0e7490]',
+  'Resource': 'bg-[#ede9fe] text-[#6d28d9]',
+  'Farm Action': 'bg-[#fef3c7] text-[#b45309]',
+  'Farm Coordinator': 'bg-[#e0e7ff] text-[#4338ca]',
+}
+
+function AgentBadge({ agent, label }: { agent: string; label?: string }) {
+  const cls = AGENT_COLOR[agent] ?? 'bg-[var(--color-soil-soft)] text-[var(--color-soil)]'
+  return (
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold tracking-tight ${cls}`}
+    >
+      {label ?? agent}
+    </span>
+  )
+}
+
+// ---- Data ---------------------------------------------------------------
+
+const devices: {
+  id: string
+  name: string
+  status: Status
+  age: string
+  metrics: { label: string; value: string }[]
+}[] = [
+  {
+    id: 'SOIL_01',
+    name: 'Cảm biến đất',
+    status: 'ok',
+    age: '12 giây',
+    metrics: [
+      { label: 'Độ ẩm đất', value: '68%' },
+      { label: 'Nhiệt độ', value: '27°C' },
+    ],
+  },
+  {
+    id: 'WEATHER_01',
+    name: 'Trạm thời tiết',
+    status: 'ok',
+    age: '30 giây',
+    metrics: [
+      { label: 'Nhiệt độ', value: '24°C' },
+      { label: 'Độ ẩm', value: '82%' },
+    ],
+  },
+  {
+    id: 'PUMP_01',
+    name: 'Bơm tưới Khu A',
+    status: 'ok',
+    age: '45 giây',
+    metrics: [
+      { label: 'Lưu lượng', value: '18 L/min' },
+      { label: 'Công suất', value: '340 W' },
+    ],
+  },
+  {
+    id: 'PH_01',
+    name: 'Cảm biến pH bồn',
+    status: 'warn',
+    age: '1 phút',
+    metrics: [{ label: 'Độ pH', value: '6.4' }],
+  },
+  {
+    id: 'TANK_01',
+    name: 'Bồn nước chính',
+    status: 'ok',
+    age: '18 giây',
+    metrics: [{ label: 'Mực nước', value: '72%' }],
+  },
+  {
+    id: 'SUN_01',
+    name: 'Cảm biến nắng',
+    status: 'offline',
+    age: '8 phút',
+    metrics: [{ label: 'Cường độ sáng', value: '—' }],
+  },
+]
+
+const onlineDeviceCount = devices.filter((d) => d.status !== 'offline').length
+
+type Task = {
+  name: string
+  agent: string[]
+  status: 'Chờ' | 'Đang xử lý' | 'Hoàn tất'
+  time: string
+}
+
+const initialTasks: Task[] = [
+  { name: 'Tưới Khu A', agent: ['Irrigation Planning', 'Farm Action'], status: 'Đang xử lý', time: '06:12' },
+  { name: 'Đọc dữ liệu SOIL_01', agent: ['Field IoT'], status: 'Hoàn tất', time: '05:40' },
+  { name: 'Xác nhận nguồn nước TANK_01', agent: ['Resource'], status: 'Hoàn tất', time: '05:30' },
+  { name: 'Kiểm tra phiên tưới Khu A', agent: ['Field IoT'], status: 'Đang xử lý', time: '05:58' },
+  { name: 'Kiểm tra kết nối SUN_01', agent: ['Farm Action'], status: 'Chờ', time: '06:14' },
+  { name: 'Tạo báo cáo canh tác', agent: ['Farm Coordinator'], status: 'Chờ', time: '06:05' },
+]
+
+type Verification = {
+  name: string
+  result: 'Thành công' | 'Thất bại'
+}
+
+const initialVerifications: Verification[] = [
+  { name: 'Van tưới Khu A', result: 'Thành công' },
+  { name: 'Cảm biến SOIL_01', result: 'Thành công' },
+  { name: 'Kết nối SUN_01', result: 'Thất bại' },
+  { name: 'Bơm PUMP_01', result: 'Thành công' },
+  { name: 'Đồng bộ WEATHER_01', result: 'Thành công' },
+  { name: 'Báo cáo canh tác', result: 'Thất bại' },
+]
+
+const taskTone: Record<string, 'warn' | 'leaf' | 'ok'> = {
+  'Chờ': 'warn',
+  'Đang xử lý': 'leaf',
+  'Hoàn tất': 'ok',
+}
+
+// Card kế hoạch tưới luôn nền xanh lá trơn; trạng thái phê duyệt chỉ thể hiện qua badge.
+const PLAN_CARD_STYLE = 'border-[#bfe3c4] bg-[#e6f5e8]'
+
+// ---- App ----------------------------------------------------------------
+
+export default function App() {
+  const [planStatus, setPlanStatus] = useState<'pending' | 'approved' | 'rejected'>('pending')
+  const [taskList, setTaskList] = useState(initialTasks)
+  const [verificationLog, setVerificationLog] = useState(initialVerifications)
+
+  function handleApprove() {
+    if (planStatus !== 'pending') return
+    setPlanStatus('approved')
+    setTaskList((prev) =>
+      prev.map((t) => (t.name === 'Tưới Khu A' ? { ...t, status: 'Hoàn tất' } : t)),
+    )
+    setVerificationLog((prev) => [
+      { name: 'Duyệt kế hoạch tưới Khu A', result: 'Thành công' },
+      ...prev,
+    ])
+  }
+
+  function handleReject() {
+    if (planStatus !== 'pending') return
+    setPlanStatus('rejected')
+    setTaskList((prev) =>
+      prev.map((t) => (t.name === 'Tưới Khu A' ? { ...t, status: 'Chờ' } : t)),
+    )
+    setVerificationLog((prev) => [
+      { name: 'Từ chối kế hoạch tưới Khu A', result: 'Thành công' },
+      ...prev,
+    ])
+  }
+
+  function handleResetDemo() {
+    setPlanStatus('pending')
+    setTaskList((prev) =>
+      prev.map((t) => (t.name === 'Tưới Khu A' ? { ...t, status: 'Đang xử lý' } : t)),
+    )
+  }
+
+  return (
+    <div className="min-h-full bg-[var(--color-field)] text-[var(--color-ink)]">
+      {/* TOP BAR */}
+      <header className="sticky top-0 z-30 border-b border-[var(--color-line)] bg-[var(--color-canvas)]/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
+          <div className="mr-auto flex items-baseline gap-2">
+            <span className="font-display text-xl font-extrabold tracking-tight text-[var(--color-leaf-deep)]">
+              AgriMind
+            </span>
+            <span className="hidden text-xs font-medium text-[var(--color-ink-soft)] sm:inline">
+              Multi-Agent Farm
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Dot status="ok" size={10} />
+            <span className="text-sm font-semibold">Online</span>
+          </div>
+
+          <div className="hidden flex-col leading-tight sm:flex">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-soft)]">
+              Cập nhật
+            </span>
+            <span className="font-mono text-sm font-semibold">06:14:52</span>
+          </div>
+
+        </div>
+      </header>
+
+      {/* CONTENT */}
+      <main className="mx-auto flex max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-6">
+        {/* THIẾT BỊ IOT — 1 khối, chia ô bằng đường kẻ nội bộ thay vì card riêng */}
+        <section className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-canvas)] p-5 shadow-sm sm:p-6">
+          <div className="mb-3 flex items-center gap-2">
+            <h3 className="font-display text-lg font-bold tracking-tight">Thiết bị IoT</h3>
+            <Badge tone={onlineDeviceCount === devices.length ? 'ok' : 'warn'}>
+              {onlineDeviceCount}/{devices.length} online
+            </Badge>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {devices.map((d) => {
+              const off = d.status === 'offline'
+              return (
+                <div
+                  key={d.id}
+                  className={`rounded-xl border-2 border-[var(--color-line)] p-4 ${
+                    off ? 'bg-[#e4e4e1] text-[var(--color-offline)]' : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold tracking-tight text-[var(--color-ink-soft)]">
+                      {d.id}
+                    </span>
+                    <Dot status={d.status} />
+                  </div>
+                  <div
+                    className={`mt-0.5 text-sm font-semibold ${
+                      off ? 'text-[var(--color-offline)]' : 'text-[var(--color-ink)]'
+                    }`}
+                  >
+                    {d.name}
+                  </div>
+
+                  <div className="mt-3 space-y-1.5">
+                    {d.metrics.map((m, i) => {
+                      const MetricIcon = METRIC_ICON[m.label]
+                      return (
+                        <div key={m.label} className="flex items-baseline justify-between gap-2">
+                          <span className="flex items-center gap-1 text-[11px] font-medium text-[var(--color-ink-soft)]">
+                            {MetricIcon && <MetricIcon className="h-3 w-3" />}
+                            {m.label}
+                          </span>
+                          <span
+                            className={
+                              i === 0
+                                ? `font-display text-2xl font-bold leading-none tracking-tight ${
+                                    off ? 'text-[var(--color-offline)]' : 'text-[var(--color-ink)]'
+                                  }`
+                                : `text-sm font-semibold ${
+                                    off ? 'text-[var(--color-offline)]' : 'text-[var(--color-ink)]'
+                                  }`
+                            }
+                          >
+                            {off ? '—' : m.value}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="mt-3 text-xs font-medium text-[var(--color-ink-soft)]">
+                    {off ? 'Mất kết nối' : d.age}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* VẬN HÀNH HÔM NAY — kế hoạch + nhiệm vụ + xác minh gộp 1 khối, chia bằng đường kẻ */}
+        <section className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-canvas)] p-5 shadow-sm sm:p-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:divide-x-2 lg:divide-[var(--color-line)]">
+            {/* Cột trái: kế hoạch tưới + nhiệm vụ */}
+            <div className="flex flex-col lg:col-span-8 lg:pr-6">
+              <div className={`rounded-2xl border-2 p-5 transition-colors sm:p-6 ${PLAN_CARD_STYLE}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl">
+                      Kế hoạch tưới hôm nay
+                    </h2>
+                    <div className="mt-1 flex items-center gap-2">
+                      <AgentBadge agent="Irrigation Planning" label="Irrigation Planning Agent" />
+                    </div>
+                  </div>
+                  {planStatus === 'pending' && <Badge tone="danger">Ưu tiên cao</Badge>}
+                  {planStatus === 'approved' && (
+                    <Badge tone="ok">
+                      <IconCheckCircle className="mr-1 h-3 w-3" />
+                      Đã duyệt
+                    </Badge>
+                  )}
+                  {planStatus === 'rejected' && (
+                    <Badge tone="danger">
+                      <IconXCircle className="mr-1 h-3 w-3" />
+                      Đã từ chối
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+                  <Field label="Khu vực" value="Khu A" />
+                  <Field label="Khung giờ" value="06:30 – 07:15" mono />
+                  <Field label="Lượng nước" value="1.200 L" mono />
+                </div>
+
+                <div className="mt-5">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
+                    Dữ liệu căn cứ
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {['SOIL_01', 'WEATHER_01', 'TANK_01', 'SUN_01', 'PUMP_01'].map((c) => (
+                      <span
+                        key={c}
+                        className="rounded-md bg-[var(--color-canvas)] px-2 py-1 font-mono text-xs font-semibold text-[var(--color-soil)]"
+                      >
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                  {planStatus === 'pending' ? (
+                    <>
+                      <button
+                        onClick={handleReject}
+                        className="rounded-xl border border-[var(--color-danger)] bg-white px-5 py-2.5 text-sm font-semibold text-[var(--color-danger)] shadow-sm transition-colors hover:bg-[var(--color-danger)] hover:text-white"
+                      >
+                        Từ chối
+                      </button>
+                      <button
+                        onClick={handleApprove}
+                        className="rounded-xl border border-[var(--color-leaf-deep)] bg-[var(--color-leaf)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--color-leaf-deep)]"
+                      >
+                        Phê duyệt
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handleResetDemo}
+                      className="rounded-xl border border-[var(--color-line)] bg-[var(--color-canvas)] px-5 py-2.5 text-sm font-semibold text-[var(--color-ink-soft)] transition-colors hover:bg-[var(--color-field)]"
+                    >
+                      Đặt lại (demo)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-8 border-t-2 border-[var(--color-line)] pt-6">
+                <SectionTitle inline>Nhiệm vụ</SectionTitle>
+                <div className="mt-1 overflow-x-auto">
+                  <table className="w-full min-w-[480px] border-collapse text-left">
+                    <thead>
+                      <tr className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
+                        <th className="py-2 pr-3 font-semibold">Nhiệm vụ</th>
+                        <th className="py-2 pr-3 font-semibold">Agent</th>
+                        <th className="py-2 pr-3 font-semibold">Trạng thái</th>
+                        <th className="py-2 font-semibold">Tạo lúc</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {taskList.map((t) => {
+                        const StatusIcon = STATUS_ICON[t.status]
+                        return (
+                          <tr
+                            key={t.name}
+                            className="border-t border-[var(--color-line)] transition-colors hover:bg-[var(--color-field)]"
+                          >
+                            <td className="py-3 pr-3 text-sm font-semibold">{t.name}</td>
+                            <td className="py-3 pr-3">
+                              <div className="flex flex-wrap gap-1.5">
+                                {t.agent.map((a) => (
+                                  <AgentBadge key={a} agent={a} />
+                                ))}
+                              </div>
+                            </td>
+                            <td className="py-3 pr-3">
+                              <Badge tone={taskTone[t.status]}>
+                                <StatusIcon
+                                  className={`mr-1 h-3 w-3 ${t.status === 'Đang xử lý' ? 'animate-spin' : ''}`}
+                                />
+                                {t.status}
+                              </Badge>
+                            </td>
+                            <td className="py-3 font-mono text-sm text-[var(--color-ink-soft)]">
+                              {t.time}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Cột phải: xác minh */}
+            <div className="lg:col-span-4 lg:pl-6">
+              <SectionTitle inline>Xác minh gần nhất</SectionTitle>
+              <ul className="mt-1 divide-y divide-[var(--color-line)]">
+                {verificationLog.map((v, i) => {
+                  const ok = v.result === 'Thành công'
+                  const ResultIcon = ok ? IconCheckCircle : IconXCircle
+                  return (
+                    <li key={`${v.name}-${i}`} className="flex items-center justify-between gap-3 py-2.5">
+                      <span className="truncate text-sm font-medium">{v.name}</span>
+                      <Badge tone={ok ? 'ok' : 'danger'}>
+                        <ResultIcon className="mr-1 h-3 w-3" />
+                        {v.result}
+                      </Badge>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  )
+}
+
+function SectionTitle({
+  children,
+  inline = false,
+}: {
+  children: React.ReactNode
+  inline?: boolean
+}) {
+  return (
+    <h3
+      className={`font-display text-lg font-bold tracking-tight ${
+        inline ? 'mb-3' : 'mb-3'
+      }`}
+    >
+      {children}
+    </h3>
+  )
+}
+
+function Field({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+}) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-soft)]">
+        {label}
+      </div>
+      <div
+        className={`mt-0.5 text-base font-bold text-[var(--color-ink)] ${
+          mono ? 'font-mono' : 'font-display'
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  )
+}

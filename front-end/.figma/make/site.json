@@ -1,0 +1,10 @@
+{
+  "description": "Manage smart farm operations with a user-friendly dashboard that displays real-time IoT device data, irrigation plans, and task management in Vietnamese.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
