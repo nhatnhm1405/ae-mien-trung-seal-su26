@@ -68,7 +68,9 @@ class DeviceState:
             mean = roll.mean().iloc[-1]
             std = roll.std().iloc[-1]
             # tốc độ thay đổi (đơn vị/giờ) giữa điểm đầu và cuối cửa sổ
-            windowed = series.last(window)
+            # (Series.last() đã bị xoá từ pandas 3.0 — cắt thủ công theo mốc thời gian)
+            cutoff = series.index[-1] - pd.Timedelta(seconds=window_seconds)
+            windowed = series[series.index >= cutoff]
             slope_per_hour = None
             if len(windowed) >= 2:
                 dt_hours = (windowed.index[-1] - windowed.index[0]).total_seconds() / 3600
