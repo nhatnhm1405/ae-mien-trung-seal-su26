@@ -26,8 +26,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.state import farm_state
-from app.mqtt_client import start_simulator, inject_anomaly
+from app.mqtt_client import start_simulator, inject_anomaly, freeze_device, unfreeze_device
 from app import tools
+from app.agents import coordinator_agent, irrigation_resource_agent
 
 logger = logging.getLogger("main")
 logging.basicConfig(level=logging.INFO)
@@ -198,6 +199,43 @@ def api_report(zone: Optional[str] = None):
 
 
 # ---------------------------------------------------------------------------
+# REST: Multi-Agent — điểm vào duy nhất gọi LLM (Farm Coordinator & Action Agent)
+# ---------------------------------------------------------------------------
+class AgentRequest(BaseModel):
+    message: str
+
+
+@app.post("/api/agent/request")
+async def api_agent_request(req: AgentRequest):
+    """Nhận 1 yêu cầu tiếng Việt của người quản lý (VD: 'chuẩn bị kế hoạch tưới khu A hôm
+    nay'), Coordinator & Action Agent tự điều phối Field IoT Agent + Irrigation & Resource
+    Agent, gọi Tool/API tương ứng, rồi trả câu trả lời + trace các tool đã dùng."""
+    result = coordinator_agent.handle_request(req.message)
+
+    # Đẩy realtime cho dashboard dựa trên các tool Action đã thực sự chạy thành công
+    # trong lúc Agent xử lý (bỏ qua nếu tool đó lỗi/bị guardrail chặn).
+    for call in result["trace"]:
+        tool_name = call["tool"]
+        payload = call["result"]
+        if tool_name == "create_irrigation_plan" and "plan_id" in payload:
+            await broadcast({"event": "plan_created", "data": payload})
+        elif tool_name == "create_inspection_task" and "task_id" in payload:
+            await broadcast({"event": "task_created", "data": payload})
+        elif tool_name == "send_notification" and "notification_id" in payload:
+            await broadcast({"event": "notification", "data": payload})
+
+    return result
+
+
+@app.get("/api/agent/debug/assess-irrigation")
+def api_debug_assess_irrigation(zone: str = "A"):
+    """DEBUG — gọi thẳng Irrigation & Resource Agent (không qua LLM), dùng để test
+    logic z-score/guardrail ngay lập tức, tránh race condition với simulator (LLM
+    thật mất 1-3s round-trip, đủ để simulator nền tick đè giá trị vừa inject)."""
+    return irrigation_resource_agent.assess_irrigation_need(zone)
+
+
+# ---------------------------------------------------------------------------
 # REST: Demo helpers — nút "bơm dữ liệu bất thường" bắt buộc phải có cho pitch
 # ---------------------------------------------------------------------------
 @app.post("/api/simulate/inject")
@@ -213,12 +251,22 @@ async def api_inject(device_code: str, overrides: dict):
 
 @app.post("/api/simulate/freeze/{device_code}")
 def api_freeze_device(device_code: str):
-    """Giả lập thiết bị ngừng gửi dữ liệu (kịch bản 3) — không xoá lịch sử,
-    chỉ đơn giản là không ingest thêm nữa cho tới khi bạn gọi lại inject."""
+    """Giả lập thiết bị ngừng gửi dữ liệu (kịch bản 3) — không xoá lịch sử, và simulator sẽ
+    KHÔNG ghi đè thiết bị này nữa (giữ stale thật sự) cho tới khi gọi /unfreeze."""
     if device_code not in farm_state.devices:
         raise HTTPException(404, f"Không có thiết bị {device_code}")
+    freeze_device(device_code)
     farm_state.devices[device_code].last_seen_ts = 0  # ép is_stale = True ngay lập tức
     return {"frozen": device_code, "is_stale": farm_state.devices[device_code].is_stale}
+
+
+@app.post("/api/simulate/unfreeze/{device_code}")
+def api_unfreeze_device(device_code: str):
+    """Bỏ freeze — simulator ghi dữ liệu lại bình thường cho thiết bị này."""
+    if device_code not in farm_state.devices:
+        raise HTTPException(404, f"Không có thiết bị {device_code}")
+    unfreeze_device(device_code)
+    return {"unfrozen": device_code}
 
 
 # ---------------------------------------------------------------------------

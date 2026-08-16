@@ -1,25 +1,38 @@
 """
 Cấu hình toàn cục cho Data/Backend layer.
 
-QUAN TRỌNG: Đây là file DUY NHẤT bạn cần sửa vào sáng Ngày 2 khi BTC công bố
-địa chỉ MQTT broker + tên topic thật. Mọi chỗ khác trong code chỉ đọc từ đây,
-không hardcode lại tên thiết bị hay topic ở nơi khác.
+QUAN TRỌNG: Đây là file DUY NHẤT bạn cần sửa khi BTC công bố địa chỉ MQTT
+broker + tên topic thật. Mọi chỗ khác trong code chỉ đọc từ đây, không
+hardcode lại tên thiết bị hay topic ở nơi khác.
+
+Giá trị thật (host, username, password, topic...) KHÔNG nằm trong file này —
+nằm trong `.env` (đã bị .gitignore chặn, không commit). File này chỉ đọc qua
+os.environ / python-dotenv. Copy `.env.example` -> `.env` rồi điền nếu chưa có.
 """
 
+import os
 from dataclasses import dataclass, field
 
+from dotenv import load_dotenv
+
+load_dotenv()  # nạp llm-test/.env nếu chạy uvicorn từ trong thư mục llm-test/
+
 
 # ---------------------------------------------------------------------------
-# 1. MQTT broker — SỬA 3 DÒNG NÀY khi có thông tin thật từ BTC (Ngày 1)
+# 1. MQTT broker — lấy từ .env, KHÔNG hardcode credential thật ở đây
 # ---------------------------------------------------------------------------
-MQTT_BROKER_HOST = "localhost"
-MQTT_BROKER_PORT = 1883
-MQTT_TOPIC_PREFIX = "farm"  # đoán: farm/<device_code>/telemetry — sửa theo thực tế
+MQTT_BROKER_HOST = os.environ.get("MQTT_BROKER_HOST", "localhost")
+MQTT_BROKER_PORT = int(os.environ.get("MQTT_BROKER_PORT", "1883"))
 
-# Nếu BTC dùng 1 topic chung cho tất cả thiết bị thay vì mỗi thiết bị 1 topic,
-# đổi USE_SINGLE_TOPIC = True và set SINGLE_TOPIC bên dưới.
-USE_SINGLE_TOPIC = False
-SINGLE_TOPIC = "farm/telemetry"
+MQTT_USERNAME = os.environ.get("MQTT_USERNAME")
+MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
+MQTT_TEST_KEY = os.environ.get("MQTT_TEST_KEY")  # chưa rõ mục đích, xem ghi chú README
+
+# BTC cấp 1 topic test dùng chung cho toàn đội test kết nối, không phải 1 topic/thiết bị
+# -> mặc định dùng chế độ single-topic; parse_payload() phải tự đọc device_code trong JSON.
+MQTT_TOPIC_PREFIX = "farm"  # dự phòng nếu sau này đổi sang mỗi thiết bị 1 topic riêng
+USE_SINGLE_TOPIC = True
+SINGLE_TOPIC = os.environ.get("MQTT_TEST_TOPIC", "farm/telemetry")
 
 
 def topic_for(device_code: str) -> str:
