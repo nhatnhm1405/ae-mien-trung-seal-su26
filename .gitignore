@@ -1,24 +1,38 @@
-# Environment variables
+# --- Biến môi trường / Thông tin nhạy cảm ---
 .env
+.env.*
+!.env.example
 
-# Python
+# --- Python ---
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 *.egg-info/
 dist/
 build/
+.venv/
+venv/
+env/
+.pytest_cache/
 
-# Model checkpoints (generated at runtime)
+# --- Model artifacts (ML) ---
 *.pkl
+*.joblib
+*.h5
+*.onnx
+model_checkpoint*
 
-# IDE
+# --- Node / Frontend ---
+node_modules/
+.vite/
+
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
 
-# Node
-node_modules/
-
-# OS
-.DS_Store
-Thumbs.db
+# --- Logs / data dumps ---
+*.log
+*.csv
+*.sqlite
+*.db
