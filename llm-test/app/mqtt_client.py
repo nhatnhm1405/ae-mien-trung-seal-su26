@@ -17,7 +17,16 @@ import time
 import threading
 import logging
 
-from app.config import DEVICES, MQTT_BROKER_HOST, MQTT_BROKER_PORT, topic_for
+from app.config import (
+    DEVICES,
+    MQTT_BROKER_HOST,
+    MQTT_BROKER_PORT,
+    MQTT_USERNAME,
+    MQTT_PASSWORD,
+    USE_SINGLE_TOPIC,
+    SINGLE_TOPIC,
+    topic_for,
+)
 from app.state import farm_state
 
 logger = logging.getLogger("mqtt_client")
@@ -61,16 +70,25 @@ def parse_payload(payload_bytes: bytes) -> tuple[str | None, dict, float | None]
 
 
 def run_mqtt_client(host: str = MQTT_BROKER_HOST, port: int = MQTT_BROKER_PORT):
-    """Kết nối vào broker MQTT thật và subscribe tất cả topic thiết bị.
+    """Kết nối vào broker MQTT thật và subscribe topic thiết bị.
     QoS = 1 theo khuyến nghị (đảm bảo tới, chấp nhận trùng lặp)."""
     import paho.mqtt.client as mqtt
 
+    if not host:
+        raise RuntimeError(
+            "MQTT_BROKER_HOST chưa được set trong .env — điền host:port broker thật của BTC trước khi chạy."
+        )
+
     def on_connect(client, userdata, flags, reason_code, properties=None):
         logger.info("Đã kết nối MQTT broker %s:%s (rc=%s)", host, port, reason_code)
-        for code in DEVICES:
-            topic = topic_for(code)
-            client.subscribe(topic, qos=1)
-            logger.info("Subscribed: %s", topic)
+        if USE_SINGLE_TOPIC:
+            client.subscribe(SINGLE_TOPIC, qos=1)
+            logger.info("Subscribed (single topic): %s", SINGLE_TOPIC)
+        else:
+            for code in DEVICES:
+                topic = topic_for(code)
+                client.subscribe(topic, qos=1)
+                logger.info("Subscribed: %s", topic)
 
     def on_message(client, userdata, msg):
         device_code, metrics, event_time = parse_payload(msg.payload)
@@ -78,8 +96,12 @@ def run_mqtt_client(host: str = MQTT_BROKER_HOST, port: int = MQTT_BROKER_PORT):
             ok = farm_state.ingest(device_code, metrics, event_time=event_time)
             if not ok:
                 logger.warning("Nhận dữ liệu từ thiết bị lạ (ngoài danh mục): %s", device_code)
+        else:
+            logger.warning("Payload thiếu device_code hoặc metrics số: %s", msg.payload[:200])
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv311)
+    if MQTT_USERNAME:
+        client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect(host, port, keepalive=30)
@@ -89,6 +111,15 @@ def run_mqtt_client(host: str = MQTT_BROKER_HOST, port: int = MQTT_BROKER_PORT):
 # ---------------------------------------------------------------------------
 # Chế độ 2: Simulator — để Frontend/AI code song song mà không cần chờ broker BTC
 # ---------------------------------------------------------------------------
+
+# Thiết bị đang bị "khoá" tạm thời để giá trị demo (inject/freeze) không bị simulator
+# ghi đè trước khi Agent kịp đọc — LLM thật mất 1-3s round-trip, nếu simulator tick
+# (mỗi 3s) đúng lúc đó thì giá trị bất thường vừa bơm sẽ biến mất trước khi ai thấy.
+_pinned_until: dict[str, float] = {}  # device_code -> epoch time hết hạn pin
+_frozen: set[str] = set()  # device_code -> đang freeze (Kịch bản 3), giữ tới khi unfreeze
+PIN_SECONDS_DEFAULT = 20.0
+
+
 def _simulate_reading(device_code: str) -> dict:
     """Sinh số liệu giả hợp lý cho từng loại thiết bị."""
     generators = {
@@ -113,7 +144,10 @@ def start_simulator(interval_seconds: float = 3.0, stop_event: threading.Event |
     def loop():
         logger.info("Simulator bắt đầu chạy (interval=%.1fs) — CHỈ dùng cho dev/test.", interval_seconds)
         while not stop_event.is_set():
+            now = time.time()
             for code in DEVICES:
+                if code in _frozen or _pinned_until.get(code, 0) > now:
+                    continue  # đang demo (freeze/inject) — không ghi đè
                 metrics = _simulate_reading(code)
                 farm_state.ingest(code, metrics, event_time=time.time())
             stop_event.wait(interval_seconds)
@@ -123,13 +157,26 @@ def start_simulator(interval_seconds: float = 3.0, stop_event: threading.Event |
     return t, stop_event
 
 
-def inject_anomaly(device_code: str, overrides: dict) -> dict:
+def inject_anomaly(device_code: str, overrides: dict, pin_seconds: float = PIN_SECONDS_DEFAULT) -> dict:
     """Bơm 1 giá trị bất thường thủ công (dùng cho nút demo 'inject anomaly' trên dashboard).
-    Trả về bản ghi đã bơm để Frontend confirm."""
+    'Khoá' thiết bị này trong pin_seconds để simulator không tự ghi đè giá trị vừa bơm
+    trước khi Agent (LLM mất 1-3s round-trip) kịp đọc. Trả về bản ghi đã bơm để Frontend confirm."""
     base = _simulate_reading(device_code) if device_code in DEVICES else {}
     base.update(overrides)
     farm_state.ingest(device_code, base, event_time=time.time())
+    _pinned_until[device_code] = time.time() + pin_seconds
     return base
+
+
+def freeze_device(device_code: str) -> None:
+    """Giả lập thiết bị ngừng gửi dữ liệu (Kịch bản 3) — giữ stale THẬT SỰ cho tới khi
+    unfreeze_device(), không tự hồi sau 3s như trước (simulator sẽ bỏ qua thiết bị này)."""
+    _frozen.add(device_code)
+
+
+def unfreeze_device(device_code: str) -> None:
+    """Bỏ freeze — simulator ghi dữ liệu lại bình thường cho thiết bị này."""
+    _frozen.discard(device_code)
 
 
 if __name__ == "__main__":
