@@ -727,12 +727,17 @@ export default function App() {
                         <th className="py-2 pr-3 font-semibold">Nhiệm vụ</th>
                         <th className="py-2 pr-3 font-semibold">Agent</th>
                         <th className="py-2 pr-3 font-semibold">Trạng thái</th>
-                        <th className="py-2 font-semibold">Tạo lúc</th>
+                        <th className="py-2 pr-3 font-semibold">Tạo lúc</th>
+                        <th className="py-2 font-semibold">Hành động</th>
                       </tr>
                     </thead>
                     <tbody>
                       {taskList.map((t) => {
                         const StatusIcon = STATUS_ICON[t.status]
+                        // Chỉ nhiệm vụ có id thật (đến từ backend, không phải dữ liệu mẫu)
+                        // và chưa qua verification mới cho bấm — đây chính là bước
+                        // "xác minh sau hành động" mà Track B yêu cầu.
+                        const canVerify = data.live && t.id && t.status !== 'Hoàn tất'
                         return (
                           <tr
                             key={t.id ?? t.name}
@@ -754,8 +759,23 @@ export default function App() {
                                 {t.status}
                               </Badge>
                             </td>
-                            <td className="py-3 font-mono text-sm text-[var(--color-ink-soft)]">
+                            <td className="py-3 pr-3 font-mono text-sm text-[var(--color-ink-soft)]">
                               {t.time}
+                            </td>
+                            <td className="py-3">
+                              {canVerify ? (
+                                <button
+                                  onClick={() => run(() => actions.verifyTask(t.id!))}
+                                  disabled={busy}
+                                  className="rounded-lg border border-[var(--color-leaf-deep)] px-2.5 py-1 text-xs font-semibold text-[var(--color-leaf-deep)] transition-colors hover:bg-[var(--color-leaf)] hover:text-white disabled:opacity-40"
+                                >
+                                  Xác minh
+                                </button>
+                              ) : (
+                                t.status === 'Hoàn tất' && (
+                                  <span className="text-xs text-[var(--color-ink-soft)]">Đã xác minh</span>
+                                )
+                              )}
                             </td>
                           </tr>
                         )
