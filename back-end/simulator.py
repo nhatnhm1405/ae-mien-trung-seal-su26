@@ -5,19 +5,20 @@ Format BTC JSON:
 {
   "timestamp": "2026-07-18T07:30:01.000Z",
   "epoch": 1784369401,
-  "environment": "FARM_ZONE_A",
-  "teamCode": "AE_MIEN_TRUNG",
+  "environment": "HOME",
+  "teamCode": "HOME_T1",
   "devices": [
     {
-      "deviceCode": "SOIL_01",
+      "deviceCode": "AC_01",
       "status": "ok",
-      "metrics": { "soil_moisture": 42.5, "temperature": 28.1 }
-    },
-    ...
+      "metrics": { "power": 1160.4, "temperature": 24.7 }
+    }
   ]
 }
 
-Chay: python simulator.py
+Chay:
+  1. Direct buffer: python simulator.py --mode buffer
+  2. MQTT publish:  python simulator.py --mode mqtt
 """
 import time
 import math
@@ -25,6 +26,10 @@ import random
 import logging
 import argparse
 import datetime
+import json
+
+from dotenv import load_dotenv
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
 logger = logging.getLogger("Simulator")
@@ -109,8 +114,8 @@ class BTCFarmSimulator:
         }
 
 
-def run_simulator(duration: int = 300, interval: float = 2.0):
-    from buffer import DeviceBuffer
+def run_buffer_mode(duration: int = 300, interval: float = 2.0):
+    """Luu truc tiep vao buffer & websocket."""
     from main import on_mqtt_telemetry
 
     sim = BTCFarmSimulator(scenario="normal")
@@ -125,7 +130,6 @@ def run_simulator(duration: int = 300, interval: float = 2.0):
             payload = sim.generate_btc_payload()
             msg_count += 1
 
-            # Gia lap MQTT receiver nhan payload va dua vao pipeline
             epoch = payload["epoch"]
             for dev in payload["devices"]:
                 telemetry = {
@@ -143,9 +147,49 @@ def run_simulator(duration: int = 300, interval: float = 2.0):
         print("\nSimulator stopped.")
 
 
+def run_mqtt_mode(duration: int = 300, interval: float = 2.0):
+    """Publish goi tin BTC qua MQTT Broker thuc te."""
+    import paho.mqtt.client as mqtt
+    import os
+
+    broker = os.getenv("MQTT_BROKER", "broker.hivemq.com")
+    port = int(os.getenv("MQTT_PORT", 1883))
+    topic = os.getenv("MQTT_TOPIC_TEST", "hackathon/ae_mien_trung/test/telemetry")
+
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"Publisher_{int(time.time())}")
+    client.connect(broker, port, keepalive=60)
+    client.loop_start()
+
+    sim = BTCFarmSimulator(scenario="normal")
+    print("=" * 60)
+    print(f"Publishing BTC Payload over MQTT to [{broker}:{port}]")
+    print(f"Topic: {topic}")
+    print("=" * 60)
+
+    start = time.time()
+    msg_count = 0
+    try:
+        while time.time() - start < duration:
+            payload = sim.generate_btc_payload()
+            msg_count += 1
+            client.publish(topic, json.dumps(payload), qos=1)
+            print(f"  [{int(time.time() - start):>3d}s] Published MQTT Payload #{msg_count} to [{topic}]")
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("\nPublisher stopped.")
+    finally:
+        client.loop_stop()
+        client.disconnect()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BTC Payload Format Simulator")
+    parser.add_argument("--mode", choices=["buffer", "mqtt"], default="buffer", help="buffer=direct stream, mqtt=publish over MQTT")
     parser.add_argument("--duration", type=int, default=300, help="Duration in seconds")
     parser.add_argument("--interval", type=float, default=2.0, help="Interval in seconds")
     args = parser.parse_args()
-    run_simulator(duration=args.duration, interval=args.interval)
+
+    if args.mode == "mqtt":
+        run_mqtt_mode(duration=args.duration, interval=args.interval)
+    else:
+        run_buffer_mode(duration=args.duration, interval=args.interval)
